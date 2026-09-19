@@ -870,6 +870,10 @@ class Config
 #if defined(OPTISCALER_RTX40_MFG)
     CustomOptional<bool> FGDLSSGAdaMfgUnlock { false }; // RTX 40 only; restart required
 #endif
+    // Special v0.8.4 SM86/SM75 sideload path. Unlike the newer external-mode integration,
+    // this keeps OptiFG ownership so games with upscaling but no native FG can use DLSSG output.
+    CustomOptional<bool> FGDLSSGAmpereMfgUnlock { false };
+    CustomOptional<int> FGDLSSGAmpereMfgMaxFrames { 1 }; // 1=2X, 2=3X, 3=4X, 4=5X, 5=6X
     CustomOptional<int> FGDLSSGInterpolationCount { 1 }; // For Opti's own SL instance
     CustomOptional<bool> FGDLSSGUseGamesReflexMarkers { true };
     CustomOptional<int, NoDefault>
