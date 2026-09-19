@@ -3352,7 +3352,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     }
 
     auto constexpr fgNvngxNoneIndex = (uint32_t) FGNvngxReplacement::None;
-    nvngxOptions[fgNvngxNoneIndex].set_disabled(!supportsDlssg, "Unsupported hardware");
+    const bool sm86RealDlssg = config->FGDLSSGAmpereMfgUnlock.value_or_default();
+    nvngxOptions[fgNvngxNoneIndex].set_disabled(!supportsDlssg && !sm86RealDlssg, "Unsupported hardware");
 
     if (replaceFgOutputWithNvngx)
     {
