@@ -229,6 +229,12 @@ bool Config::Reload(std::filesystem::path iniPath)
 #if defined(OPTISCALER_RTX40_MFG)
             FGDLSSGAdaMfgUnlock.set_from_config(readBool("DLSSG", "AdaMfgUnlock"));
 #endif
+            FGDLSSGAmpereMfgUnlock.set_from_config(readBool("DLSSG", "AmpereMfgUnlock"));
+            FGDLSSGAmpereMfgMaxFrames.set_from_config(readInt("DLSSG", "AmpereMfgMaxFrames"));
+            if (FGDLSSGAmpereMfgMaxFrames.has_value() &&
+                (FGDLSSGAmpereMfgMaxFrames.value() < 1 || FGDLSSGAmpereMfgMaxFrames.value() > 5))
+                FGDLSSGAmpereMfgMaxFrames.reset();
+
             FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
             if (FGDLSSGInterpolationCount.has_value() &&
                 (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 6))
@@ -974,11 +980,11 @@ bool Config::SaveIni()
     // Frame Generation
     {
         ini.SetValue("FrameGen", "Enabled", GetBoolValue(Instance()->FGEnabled.value_for_config()).c_str());
-        // Discard settings from removed fork-only frame-generation extensions.
+        // This branch deliberately keeps OptiFG ownership. External FG remains unsupported here.
         ini.Delete("FrameGen", "External");
-        for (const auto* key : { "AdaBlackwellKernels", "AmpereMfgUnlock", "AmpereMfgMaxFrames",
-                                "AmpereMfgKernelImage", "AmpereMfgHardwareBilinear" })
-            ini.Delete("DLSSG", key);
+        ini.Delete("DLSSG", "AdaBlackwellKernels");
+        ini.Delete("DLSSG", "AmpereMfgKernelImage");
+        ini.Delete("DLSSG", "AmpereMfgHardwareBilinear");
         ini.SetValue("FrameGen", "DebugView", GetBoolValue(Instance()->FGDebugView.value_for_config()).c_str());
         std::string FGInputString = "auto";
         if (auto FGInputHeld = Instance()->FGInput.value_for_config(); FGInputHeld.has_value())
@@ -1111,6 +1117,10 @@ bool Config::SaveIni()
 #else
         ini.Delete("DLSSG", "AdaMfgUnlock");
 #endif
+        ini.SetValue("DLSSG", "AmpereMfgUnlock",
+                     GetBoolValue(Instance()->FGDLSSGAmpereMfgUnlock.value_for_config()).c_str());
+        ini.SetValue("DLSSG", "AmpereMfgMaxFrames",
+                     GetIntValue(Instance()->FGDLSSGAmpereMfgMaxFrames.value_for_config()).c_str());
         ini.SetValue("DLSSG", "InterpolationCount",
                      GetIntValue(Instance()->FGDLSSGInterpolationCount.value_for_config()).c_str());
         ini.SetValue("DLSSG", "UseGamesReflexMarkers",
