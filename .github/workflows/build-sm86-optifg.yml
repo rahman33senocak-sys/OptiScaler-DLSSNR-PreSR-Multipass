@@ -1,0 +1,64 @@
+name: Build v0.8.4 SM86 OptiFG
+
+on:
+  push:
+    branches:
+      - v0.8.4-SM86-OptiFG
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release x64
+        shell: pwsh
+        run: msbuild OptiScaler.sln /m /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+
+      - name: Assemble Vanguard test package
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:GITHUB_WORKSPACE "artifact\OptiScaler-v0.8.4-SM86-OptiFG"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $stage "OptiScaler\plugins") | Out-Null
+
+          $releaseA = Join-Path $env:GITHUB_WORKSPACE "x64\Release\a"
+          if (Test-Path $releaseA) {
+            Copy-Item "$releaseA\*" $stage -Recurse -Force
+          } else {
+            $dll = Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -Filter "OptiScaler.dll" |
+              Where-Object { $_.FullName -match "Release" } |
+              Select-Object -First 1
+            if (-not $dll) { throw "OptiScaler.dll was not found after build." }
+            Copy-Item $dll.FullName (Join-Path $stage "OptiScaler.dll") -Force
+          }
+
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "OptiScaler.ini") (Join-Path $stage "OptiScaler.ini") -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "VANGUARD-SM86-README.md") (Join-Path $stage "VANGUARD-SM86-README.md") -Force
+
+          @"
+          PLACE YOUR EXISTING SM86 FILES HERE:
+            version.dll
+            dlssg_sm86.ini
+
+          Do not rename version.dll.
+          "@ | Set-Content -Path (Join-Path $stage "OptiScaler\plugins\PUT-SM86-FILES-HERE.txt")
+
+      - name: Upload ready package
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: OptiScaler-v0.8.4-SM86-OptiFG
+          path: artifact/OptiScaler-v0.8.4-SM86-OptiFG
+          if-no-files-found: error
+          retention-days: 14
