@@ -3417,8 +3417,11 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             ShowTooltip("What backend to use instead of the real DLSSG");
         }
 
-        // Try to avoid having None selected when the gpu doesn't support DLSSG + some fallbacks
-        if (!supportsDlssg && (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
+        // Normal OptiScaler behavior auto-selects an FSR/Nukem/Enabler fallback when the GPU
+        // is reported as not supporting DLSSG. The SM86 branch must keep None: the whole point
+        // is to use the real NVIDIA DLSSG runtime after the SM86 proxy removes the architecture gate.
+        if (!config->FGDLSSGAmpereMfgUnlock.value_or_default() &&
+            !supportsDlssg && (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
             config->FGNvngxReplacement.value_or_default() == FGNvngxReplacement::None)
         {
             if (state.nukemsFgFileAvailable)
