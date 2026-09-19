@@ -1868,6 +1868,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
         State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
 
+        // SM86 OptiFG mode always means real DLSSG. Never carry an FSR/Nukem/Enabler
+        // replacement into the active runtime state, even if an old INI/menu session selected one.
+        if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default())
+        {
+            Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+            State::Instance().activeFgNvngx = FGNvngxReplacement::None;
+        }
+
         // Ensure valid FG configuration
         if (State::Instance().activeFgInput != FGInput::NvngxFG && State::Instance().activeFgOutput != FGOutput::DLSSG)
             State::Instance().activeFgNvngx = FGNvngxReplacement::None;
