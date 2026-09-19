@@ -33,10 +33,18 @@ static std::filesystem::path ResolveProxyPath()
     const auto optiPath = std::filesystem::path(cfg->MainDllPath.value_or(basePath.wstring()));
 
     const std::filesystem::path candidates[] = {
+        // The SM86 package is commonly distributed as version.dll but many OptiScaler
+        // setups rename plugin DLLs to .asi so the ASI loader can discover them.
+        // LoadLibrary accepts either extension, so support both forms explicitly.
+        optiPath / L"plugins" / L"version.asi",
         optiPath / L"plugins" / L"version.dll",
+        optiPath / L"dlssg_sm86" / L"version.asi",
         optiPath / L"dlssg_sm86" / L"version.dll",
+        basePath / L"OptiScaler" / L"plugins" / L"version.asi",
         basePath / L"OptiScaler" / L"plugins" / L"version.dll",
+        basePath / L"OptiScaler" / L"dlssg_sm86" / L"version.asi",
         basePath / L"OptiScaler" / L"dlssg_sm86" / L"version.dll",
+        basePath / L"plugins" / L"version.asi",
         basePath / L"plugins" / L"version.dll",
     };
 
@@ -100,8 +108,8 @@ void TrySetup()
     if (proxyPath.empty())
     {
         s_status.ErrorMessage =
-            "SM86 version.dll not found. Put the SM86 proxy at OptiScaler/plugins/version.dll "
-            "or OptiScaler/dlssg_sm86/version.dll.";
+            "SM86 proxy not found. Put it at OptiScaler/plugins/version.asi (preferred for ASI plugin setups), "
+            "OptiScaler/plugins/version.dll, or the equivalent OptiScaler/dlssg_sm86/ path.";
         LOG_ERROR("Sm86ProxyLoader: {}", s_status.ErrorMessage);
         return;
     }
@@ -110,7 +118,7 @@ void TrySetup()
     s_status.IniWritten = EnsureIni(proxyPath);
     if (!s_status.IniWritten)
     {
-        s_status.ErrorMessage = "Could not create/read dlssg_sm86.ini beside version.dll.";
+        s_status.ErrorMessage = "Could not create/read dlssg_sm86.ini beside the SM86 proxy.";
         LOG_ERROR("Sm86ProxyLoader: {}", s_status.ErrorMessage);
         return;
     }
