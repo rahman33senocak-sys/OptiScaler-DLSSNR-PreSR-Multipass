@@ -871,12 +871,22 @@ void DLSSG_Dx12::UpdatePresentedState(HRESULT presentResult)
     sl::DLSSGState runtime {};
     const auto result = StreamlineProxy::DLSSGGetState()(viewport, runtime, nullptr);
     const auto status = static_cast<uint32_t>(runtime.status);
-    // The first read includes all presentations since the previous GetState call.
-    // Discard it rather than reporting an inflated multiplier after activation.
-    const bool valid = result == sl::Result::eOk && runtime.status == sl::DLSSGStatus::eOk;
-    const int observed = valid && _presentStatePrimed && runtime.numFramesActuallyPresented > 1 &&
-                                 runtime.numFramesActuallyPresented <= 6
-                             ? static_cast<int>(runtime.numFramesActuallyPresented - 1) : 0;
+    // eWarnOutOfVRAM is advisory: Streamline still returns a usable presentation count.
+    // Keep the last verified count across transient query/status warnings so the menu does
+    // not report OFF while DLSSG continues presenting generated frames.
+    const bool queryUsable = result == sl::Result::eOk || result == sl::Result::eWarnOutOfVRAM;
+    const bool valid = queryUsable && runtime.status == sl::DLSSGStatus::eOk;
+    int observed = state.dlssgDetectedInterpolationCount;
+    if (valid)
+    {
+        // The first read includes all presentations since the previous GetState call.
+        // Discard it rather than reporting an inflated multiplier after activation.
+        observed = _presentStatePrimed && runtime.numFramesActuallyPresented > 1 &&
+                           runtime.numFramesActuallyPresented <= 6
+                       ? static_cast<int>(runtime.numFramesActuallyPresented - 1) : 0;
+        _presentStatePrimed = true;
+    }
+
     if (state.dlssgDetectedInterpolationCount != observed || _lastRuntimeStatus != status)
     {
         LOG_INFO("DLSSG presentation: query={}, status=0x{:X}, presented={}, observed extra={}",
@@ -884,7 +894,6 @@ void DLSSG_Dx12::UpdatePresentedState(HRESULT presentResult)
     }
     state.dlssgDetectedInterpolationCount = observed;
     _lastRuntimeStatus = status;
-    _presentStatePrimed = valid;
 }
 
 bool DLSSG_Dx12::Present()
