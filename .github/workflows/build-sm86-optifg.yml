@@ -47,19 +47,20 @@ jobs:
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "OptiScaler.ini") (Join-Path $stage "OptiScaler.ini") -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "VANGUARD-SM86-README.md") (Join-Path $stage "VANGUARD-SM86-README.md") -Force
 
-          # Pull the complete upstream v0.8.4 runtime package so the artifact is self-contained.
-          $upstreamZip = Join-Path $env:GITHUB_WORKSPACE "upstream-v0.8.4.zip"
-          $upstreamDir = Join-Path $env:GITHUB_WORKSPACE "upstream-v0.8.4"
-          Invoke-WebRequest -Uri "https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass/releases/download/v0.8.4/OptiScaler-NR-v0.8.4.zip" -OutFile $upstreamZip
-          Expand-Archive -Path $upstreamZip -DestinationPath $upstreamDir -Force
+          # Add the complete NVIDIA Streamline 2.14.1 x64 runtime used by this OptiScaler build.
+          $streamlineZip = Join-Path $env:GITHUB_WORKSPACE "streamline-sdk-v2.14.1.zip"
+          $streamlineDir = Join-Path $env:GITHUB_WORKSPACE "streamline-sdk-v2.14.1"
+          Invoke-WebRequest -Uri "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.1/streamline-sdk-v2.14.1.zip" -OutFile $streamlineZip
+          Expand-Archive -Path $streamlineZip -DestinationPath $streamlineDir -Force
 
-          $slInterposer = Get-ChildItem $upstreamDir -File -Recurse -Filter "sl.interposer.dll" | Select-Object -First 1
-          if (-not $slInterposer) { throw "Upstream sl.interposer.dll was not found." }
-          $upstreamStreamline = $slInterposer.Directory
+          $slInterposer = Get-ChildItem $streamlineDir -File -Recurse -Filter "sl.interposer.dll" |
+            Where-Object { $_.DirectoryName -match "[\\/]bin[\\/]x64$" } |
+            Select-Object -First 1
+          if (-not $slInterposer) { throw "Streamline 2.14.1 bin/x64 runtime was not found." }
 
           $stageStreamline = Join-Path $stage "OptiScaler\streamline"
           New-Item -ItemType Directory -Force -Path $stageStreamline | Out-Null
-          Copy-Item (Join-Path $upstreamStreamline.FullName "*") $stageStreamline -Recurse -Force
+          Copy-Item (Join-Path $slInterposer.Directory.FullName "*") $stageStreamline -Recurse -Force
 
           @"
           PLACE YOUR EXISTING SM86 FILES HERE:
