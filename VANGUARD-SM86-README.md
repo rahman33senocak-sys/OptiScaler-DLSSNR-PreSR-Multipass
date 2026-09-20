@@ -39,11 +39,11 @@ FGNvngxReplacement=None
 
 [DLSSG]
 AmpereMfgUnlock=true
-AmpereMfgMaxFrames=1
+AmpereMfgMaxFrames=5
 InterpolationCount=1
 ```
 
-Start with 2X. Only increase the generated-frame count after 2X works.
+The multiplier is selectable in the OptiScaler menu from 2X through 6X. Start with 2X, then raise it as VRAM and performance allow.
 
 ## What is different from newer SM86 integration
 

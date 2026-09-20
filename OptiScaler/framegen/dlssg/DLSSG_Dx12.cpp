@@ -428,13 +428,9 @@ bool DLSSG_Dx12::Dispatch()
         {
             LOG_WARN("DLSSG reported VRAM pressure with {} generated frames; runtime presentation must be verified",
                      _framesToInterpolate);
-            if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
-                (_framesToInterpolate > 1 || forceDmfg))
-            {
-                Config::Instance()->FGDLSSGInterpolationCount.set_volatile_value(1);
-                Config::Instance()->FGDLSSGForceDMFG.set_volatile_value(false);
-                LOG_WARN("SM86: reducing this session to fixed 2X after VRAM warning");
-            }
+            LOG_WARN(
+                "SM86: keeping the selected {}X multiplier; lower it in the menu if performance or stability suffers",
+                _framesToInterpolate + 1);
         }
         else if (!_dlssgOptionsApplied)
         {
