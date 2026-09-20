@@ -47,6 +47,21 @@ jobs:
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "OptiScaler.ini") (Join-Path $stage "OptiScaler.ini") -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "VANGUARD-SM86-README.md") (Join-Path $stage "VANGUARD-SM86-README.md") -Force
 
+          # Pull the complete upstream v0.8.4 runtime package so the artifact is self-contained.
+          $upstreamZip = Join-Path $env:GITHUB_WORKSPACE "upstream-v0.8.4.zip"
+          $upstreamDir = Join-Path $env:GITHUB_WORKSPACE "upstream-v0.8.4"
+          Invoke-WebRequest -Uri "https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass/releases/download/v0.8.4/OptiScaler-NR-v0.8.4.zip" -OutFile $upstreamZip
+          Expand-Archive -Path $upstreamZip -DestinationPath $upstreamDir -Force
+
+          $upstreamStreamline = Get-ChildItem $upstreamDir -Directory -Recurse |
+            Where-Object { $_.FullName -match "[\\/]OptiScaler[\\/]streamline$" } |
+            Select-Object -First 1
+          if (-not $upstreamStreamline) { throw "Upstream streamline folder was not found." }
+
+          $stageStreamline = Join-Path $stage "OptiScaler\streamline"
+          New-Item -ItemType Directory -Force -Path $stageStreamline | Out-Null
+          Copy-Item (Join-Path $upstreamStreamline.FullName "*") $stageStreamline -Recurse -Force
+
           @"
           PLACE YOUR EXISTING SM86 FILES HERE:
             version.dll
