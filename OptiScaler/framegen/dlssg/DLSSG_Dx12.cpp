@@ -296,6 +296,7 @@ void DLSSG_Dx12::Activate()
     {
 
         UpdateTarget();
+        _dlssgOptionsApplied = false;
         _isActive = true;
     }
 }
@@ -316,6 +317,7 @@ void DLSSG_Dx12::Deactivate()
         reflexConst.useMarkersToOptimize = false;
         StreamlineProxy::ReflexSetOptions()(reflexConst);
 
+        _dlssgOptionsApplied = false;
         _isActive = false;
     }
 }
@@ -378,23 +380,44 @@ bool DLSSG_Dx12::Dispatch()
         _framesToInterpolate = Config::Instance()->FGDLSSGInterpolationCount.value_or_default();
     }
 
-    sl::DLSSGOptions options {};
-    options.mode = sl::DLSSGMode::eOn;
-    options.numFramesToGenerate = _framesToInterpolate;
-    options.queueParallelismMode = sl::DLSSGQueueParallelismMode::eBlockPresentingClientQueue;
+    const bool forceDmfg = Config::Instance()->FGDLSSGForceDMFG.value_or_default();
+    const int dynamicTargetFrameRate =
+        forceDmfg ? Config::Instance()->FGDLSSGFramerateTargetDMFG.value_or_default() : 0;
 
-    if (Config::Instance()->FGDLSSGForceDMFG.value_or_default())
+    const bool dlssgOptionsChanged = !_dlssgOptionsApplied || _lastFramesToGenerate != _framesToInterpolate ||
+                                     _lastForceDmfg != forceDmfg ||
+                                     _lastDynamicTargetFrameRate != dynamicTargetFrameRate;
+
+    if (dlssgOptionsChanged)
     {
-        options.mode = sl::DLSSGMode::eDynamic;
-        options.dynamicTargetFrameRate = Config::Instance()->FGDLSSGFramerateTargetDMFG.value_or_default();
-    }
+        sl::DLSSGOptions options {};
+        options.mode = sl::DLSSGMode::eOn;
+        options.numFramesToGenerate = _framesToInterpolate;
+        options.queueParallelismMode = sl::DLSSGQueueParallelismMode::eBlockPresentingClientQueue;
 
-    StreamlineHooks::applyMenuDlssgInterlock(options, true);
-    auto dlssgSetOptionsResult = StreamlineProxy::DLSSGSetOptions()(viewport, options);
+        if (forceDmfg)
+        {
+            options.mode = sl::DLSSGMode::eDynamic;
+            options.dynamicTargetFrameRate = dynamicTargetFrameRate;
+        }
 
-    if (dlssgSetOptionsResult != sl::Result::eOk)
-    {
-        LOG_ERROR("Couldn't set DLSSG options, error: {}", magic_enum::enum_name(dlssgSetOptionsResult));
+        StreamlineHooks::applyMenuDlssgInterlock(options, true);
+        auto dlssgSetOptionsResult = StreamlineProxy::DLSSGSetOptions()(viewport, options);
+
+        // eWarnOutOfVRAM is advisory; do not resend identical options every dispatch and spam/overhead the pipeline.
+        if (dlssgSetOptionsResult != sl::Result::eOk && dlssgSetOptionsResult != sl::Result::eWarnOutOfVRAM)
+        {
+            LOG_ERROR("Couldn't set DLSSG options, error: {}", magic_enum::enum_name(dlssgSetOptionsResult));
+        }
+        else if (dlssgSetOptionsResult == sl::Result::eWarnOutOfVRAM)
+        {
+            LOG_WARN("DLSSG options accepted with warning: eWarnOutOfVRAM");
+        }
+
+        _dlssgOptionsApplied = true;
+        _lastFramesToGenerate = _framesToInterpolate;
+        _lastForceDmfg = forceDmfg;
+        _lastDynamicTargetFrameRate = dynamicTargetFrameRate;
     }
 
     sl::ReflexOptions reflexConst = {};
