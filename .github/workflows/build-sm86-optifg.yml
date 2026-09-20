@@ -53,10 +53,9 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass/releases/download/v0.8.4/OptiScaler-NR-v0.8.4.zip" -OutFile $upstreamZip
           Expand-Archive -Path $upstreamZip -DestinationPath $upstreamDir -Force
 
-          $upstreamStreamline = Get-ChildItem $upstreamDir -Directory -Recurse |
-            Where-Object { $_.FullName -match "[\\/]OptiScaler[\\/]streamline$" } |
-            Select-Object -First 1
-          if (-not $upstreamStreamline) { throw "Upstream streamline folder was not found." }
+          $slInterposer = Get-ChildItem $upstreamDir -File -Recurse -Filter "sl.interposer.dll" | Select-Object -First 1
+          if (-not $slInterposer) { throw "Upstream sl.interposer.dll was not found." }
+          $upstreamStreamline = $slInterposer.Directory
 
           $stageStreamline = Join-Path $stage "OptiScaler\streamline"
           New-Item -ItemType Directory -Force -Path $stageStreamline | Out-Null
