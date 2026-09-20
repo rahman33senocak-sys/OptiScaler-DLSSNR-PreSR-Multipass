@@ -26,7 +26,6 @@
 #include "inputs/FG/FSR3_Dx12_FG.h"
 
 #include <fsr4/FSR4ModelSelection.h>
-#include <framegen/dlssg/Sm86ProxyLoader.h>
 
 #include <hooks/Dxgi_Hooks.h>
 #include <hooks/D3D11_Hooks.h>
@@ -1754,10 +1753,6 @@ DWORD WINAPI getGpuInfo(LPVOID hModuleVoid)
     // If DX12 already loaded then grab the full GPU info right away
     if (hModuleVoid)
         IdentifyGpu::updateD3d12Capabilities();
-
-    // v0.8.4-SM86-OptiFG: sideload the user's SM86 version.dll from the normal
-    // OptiScaler plugin tree without handing FG ownership to an external/native game path.
-    Sm86ProxyLoader::TrySetup();
 
     return 0;
 }
