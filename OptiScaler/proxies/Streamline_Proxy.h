@@ -8,7 +8,6 @@
 #include <proxies/Ntdll_Proxy.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <hooks/Streamline_Hooks.h>
-#include <framegen/dlssg/Sm86ProxyLoader.h>
 
 #include <sl.h>
 #include <sl_pcl.h>
@@ -69,11 +68,6 @@ class StreamlineProxy
     {
         if (_dll != nullptr)
             return true;
-
-        // Install the SM86 proxy immediately before Streamline and nvngx_dlssg are loaded.
-        // This is intentionally earlier than feature creation, so NGX sees the patched route.
-        if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default())
-            Sm86ProxyLoader::TrySetup();
 
         auto owner = State::GetOwner();
         if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
