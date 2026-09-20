@@ -17,6 +17,12 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     ID3D12Fence* dlssgFence[BUFFER_COUNT] = {};
     UINT64 lastOptionFrame = 0;
 
+    // Cache DLSS-G options so stable settings are not pushed through Streamline every frame.
+    bool _dlssgOptionsApplied = false;
+    UINT _lastFramesToGenerate = UINT_MAX;
+    bool _lastForceDmfg = false;
+    int _lastDynamicTargetFrameRate = -1;
+
     bool Dispatch();
 
   protected:
