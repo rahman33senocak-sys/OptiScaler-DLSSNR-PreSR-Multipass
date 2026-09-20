@@ -23,6 +23,15 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     bool _lastForceDmfg = false;
     int _lastDynamicTargetFrameRate = -1;
 
+    uint64_t _nextOptionsRetryFrame = 0;
+    bool _reflexOptionsApplied = false;
+    bool _lastReflexMarkers = false;
+    uint64_t _nextReflexRetryFrame = 0;
+    bool _presentStatePrimed = false;
+    uint32_t _lastRuntimeStatus = UINT_MAX;
+    sl::DLSSGMode _lastMode = sl::DLSSGMode::eOff;
+    sl::DLSSGFlags _lastFlags {};
+
     bool Dispatch();
 
   protected:
@@ -53,6 +62,8 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     void EvaluateState(ID3D12Device* device, FG_Constants& fgConstants) override final;
 
     bool Present() override final;
+    // Called once after each real Present, on the presenting thread.
+    void UpdatePresentedState(HRESULT presentResult);
 
     bool SetResource(Dx12Resource* inputResource) override final;
     void SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue) override final;

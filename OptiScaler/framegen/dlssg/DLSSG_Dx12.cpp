@@ -297,6 +297,11 @@ void DLSSG_Dx12::Activate()
 
         UpdateTarget();
         _dlssgOptionsApplied = false;
+        _reflexOptionsApplied = false;
+        _nextOptionsRetryFrame = 0;
+        _nextReflexRetryFrame = 0;
+        _presentStatePrimed = false;
+        State::Instance().dlssgDetectedInterpolationCount = 0;
         _isActive = true;
     }
 }
@@ -318,6 +323,11 @@ void DLSSG_Dx12::Deactivate()
         StreamlineProxy::ReflexSetOptions()(reflexConst);
 
         _dlssgOptionsApplied = false;
+        _reflexOptionsApplied = false;
+        _nextOptionsRetryFrame = 0;
+        _nextReflexRetryFrame = 0;
+        _presentStatePrimed = false;
+        State::Instance().dlssgDetectedInterpolationCount = 0;
         _isActive = false;
     }
 }
@@ -365,6 +375,14 @@ bool DLSSG_Dx12::Dispatch()
 
     auto& state = State::Instance();
 
+    // Respect the user-selected SM86 ceiling even if the runtime advertises more.
+    if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default())
+    {
+        const auto ceiling = std::clamp(Config::Instance()->FGDLSSGAmpereMfgMaxFrames.value_or_default(), 1, 5);
+        if (Config::Instance()->FGDLSSGInterpolationCount.value_or_default() > ceiling)
+            Config::Instance()->FGDLSSGInterpolationCount.set_volatile_value(ceiling);
+    }
+
     if (Config::Instance()->FGDLSSGInterpolationCount.value_or_default() > _maxInterpolationCount)
     {
         Config::Instance()->FGDLSSGInterpolationCount = _maxInterpolationCount;
@@ -384,51 +402,61 @@ bool DLSSG_Dx12::Dispatch()
     const int dynamicTargetFrameRate =
         forceDmfg ? Config::Instance()->FGDLSSGFramerateTargetDMFG.value_or_default() : 0;
 
-    const bool dlssgOptionsChanged = !_dlssgOptionsApplied || _lastFramesToGenerate != _framesToInterpolate ||
-                                     _lastForceDmfg != forceDmfg ||
-                                     _lastDynamicTargetFrameRate != dynamicTargetFrameRate;
+    sl::DLSSGOptions options {};
+    options.mode = forceDmfg ? sl::DLSSGMode::eDynamic : sl::DLSSGMode::eOn;
+    options.numFramesToGenerate = _framesToInterpolate;
+    options.queueParallelismMode = sl::DLSSGQueueParallelismMode::eBlockPresentingClientQueue;
+    options.dynamicTargetFrameRate = dynamicTargetFrameRate;
+    StreamlineHooks::applyMenuDlssgInterlock(options, true);
 
-    if (dlssgOptionsChanged)
+    const bool valuesChanged = _lastFramesToGenerate != _framesToInterpolate ||
+                               _lastForceDmfg != forceDmfg ||
+                               _lastDynamicTargetFrameRate != dynamicTargetFrameRate ||
+                               _lastMode != options.mode || _lastFlags != options.flags;
+    if (valuesChanged || (!_dlssgOptionsApplied && _frameCount >= _nextOptionsRetryFrame))
     {
-        sl::DLSSGOptions options {};
-        options.mode = sl::DLSSGMode::eOn;
-        options.numFramesToGenerate = _framesToInterpolate;
-        options.queueParallelismMode = sl::DLSSGQueueParallelismMode::eBlockPresentingClientQueue;
-
-        if (forceDmfg)
-        {
-            options.mode = sl::DLSSGMode::eDynamic;
-            options.dynamicTargetFrameRate = dynamicTargetFrameRate;
-        }
-
-        StreamlineHooks::applyMenuDlssgInterlock(options, true);
-        auto dlssgSetOptionsResult = StreamlineProxy::DLSSGSetOptions()(viewport, options);
-
-        // eWarnOutOfVRAM is advisory; do not resend identical options every dispatch and spam/overhead the pipeline.
-        if (dlssgSetOptionsResult != sl::Result::eOk && dlssgSetOptionsResult != sl::Result::eWarnOutOfVRAM)
-        {
-            LOG_ERROR("Couldn't set DLSSG options, error: {}", magic_enum::enum_name(dlssgSetOptionsResult));
-        }
-        else if (dlssgSetOptionsResult == sl::Result::eWarnOutOfVRAM)
-        {
-            LOG_WARN("DLSSG options accepted with warning: eWarnOutOfVRAM");
-        }
-
-        _dlssgOptionsApplied = true;
+        const auto result = StreamlineProxy::DLSSGSetOptions()(viewport, options);
         _lastFramesToGenerate = _framesToInterpolate;
         _lastForceDmfg = forceDmfg;
         _lastDynamicTargetFrameRate = dynamicTargetFrameRate;
+        _lastMode = options.mode;
+        _lastFlags = options.flags;
+        _dlssgOptionsApplied = result == sl::Result::eOk || result == sl::Result::eWarnOutOfVRAM;
+        _nextOptionsRetryFrame = _frameCount + 120;
+
+        if (result == sl::Result::eWarnOutOfVRAM)
+        {
+            LOG_WARN("DLSSG reported VRAM pressure with {} generated frames; runtime presentation must be verified",
+                     _framesToInterpolate);
+            if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
+                (_framesToInterpolate > 1 || forceDmfg))
+            {
+                Config::Instance()->FGDLSSGInterpolationCount.set_volatile_value(1);
+                Config::Instance()->FGDLSSGForceDMFG.set_volatile_value(false);
+                LOG_WARN("SM86: reducing this session to fixed 2X after VRAM warning");
+            }
+        }
+        else if (!_dlssgOptionsApplied)
+        {
+            LOG_ERROR("Couldn't set DLSSG options: {}; retry after 120 frames or a settings change",
+                      magic_enum::enum_name(result));
+        }
     }
 
-    sl::ReflexOptions reflexConst = {};
-    reflexConst.mode = sl::ReflexMode::eLowLatency;
-    reflexConst.useMarkersToOptimize = ReflexHooks::gameIsSendingMarkers();
-
-    auto reflexSetOptionsResult = StreamlineProxy::ReflexSetOptions()(reflexConst);
-
-    if (reflexSetOptionsResult != sl::Result::eOk)
+    const bool useMarkers = ReflexHooks::gameIsSendingMarkers() &&
+                           Config::Instance()->FGDLSSGUseGamesReflexMarkers.value_or_default();
+    if (_lastReflexMarkers != useMarkers ||
+        (!_reflexOptionsApplied && _frameCount >= _nextReflexRetryFrame))
     {
-        LOG_ERROR("Couldn't set Reflex options, error: {}", magic_enum::enum_name(reflexSetOptionsResult));
+        sl::ReflexOptions reflexConst {};
+        reflexConst.mode = sl::ReflexMode::eLowLatency;
+        reflexConst.useMarkersToOptimize = useMarkers;
+        const auto result = StreamlineProxy::ReflexSetOptions()(reflexConst);
+        _reflexOptionsApplied = result == sl::Result::eOk;
+        _lastReflexMarkers = useMarkers;
+        _nextReflexRetryFrame = _frameCount + 120;
+        if (!_reflexOptionsApplied)
+            LOG_ERROR("Couldn't set Reflex options: {}", magic_enum::enum_name(result));
     }
 
     if (!_haveHudless.has_value())
@@ -832,6 +860,35 @@ void DLSSG_Dx12::CreateObjects(ID3D12Device* InDevice)
         }
 
     } while (false);
+}
+
+void DLSSG_Dx12::UpdatePresentedState(HRESULT presentResult)
+{
+    auto& state = State::Instance();
+    if (presentResult != S_OK || !IsActive() || IsPaused())
+    {
+        state.dlssgDetectedInterpolationCount = 0;
+        _presentStatePrimed = false;
+        return;
+    }
+
+    sl::DLSSGState runtime {};
+    const auto result = StreamlineProxy::DLSSGGetState()(viewport, runtime, nullptr);
+    const auto status = static_cast<uint32_t>(runtime.status);
+    // The first read includes all presentations since the previous GetState call.
+    // Discard it rather than reporting an inflated multiplier after activation.
+    const bool valid = result == sl::Result::eOk && runtime.status == sl::DLSSGStatus::eOk;
+    const int observed = valid && _presentStatePrimed && runtime.numFramesActuallyPresented > 1 &&
+                                 runtime.numFramesActuallyPresented <= 6
+                             ? static_cast<int>(runtime.numFramesActuallyPresented - 1) : 0;
+    if (state.dlssgDetectedInterpolationCount != observed || _lastRuntimeStatus != status)
+    {
+        LOG_INFO("DLSSG presentation: query={}, status=0x{:X}, presented={}, observed extra={}",
+                 magic_enum::enum_name(result), status, runtime.numFramesActuallyPresented, observed);
+    }
+    state.dlssgDetectedInterpolationCount = observed;
+    _lastRuntimeStatus = status;
+    _presentStatePrimed = valid;
 }
 
 bool DLSSG_Dx12::Present()

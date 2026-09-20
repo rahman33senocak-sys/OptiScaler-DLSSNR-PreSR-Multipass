@@ -84,7 +84,7 @@ static bool EnsureIni(const std::filesystem::path& proxyPath)
     out << "Optimized=1\n";
     out << "MaxGeneratedFrames=" << maxFrames << "\n\n";
     out << "[Compatibility]\nPreset=Auto\n\n";
-    out << "[Logging]\nLevel=3\nDirectory=dlssg_sm86\\logs\n\n";
+    out << "[Logging]\nLevel=1\nDirectory=dlssg_sm86\\logs\n\n";
     out << "[Runtime]\nMode=Bundled\nCacheDirectory=\n";
     out.close();
 

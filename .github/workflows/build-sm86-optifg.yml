@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v0.8.4-SM86-OptiFG
+      - fix/sm86-memory-state
   workflow_dispatch:
 
 permissions:
