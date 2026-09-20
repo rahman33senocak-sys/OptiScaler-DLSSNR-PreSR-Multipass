@@ -36,6 +36,35 @@ static bool IsSL1AndFGActive()
     return state.streamlineVersion.major == 1 && state.activeFgInput == FGInput::DLSSG;
 }
 
+static int GameVisibleDlssgMax()
+{
+    int advertisedMax = 1;
+
+#if defined(OPTISCALER_RTX40_MFG)
+    auto& state = State::Instance();
+    const bool nativeGameDlssg =
+        state.activeFgInput == FGInput::DLSSG || state.activeFgInput == FGInput::NvngxFG;
+
+    if (nativeGameDlssg && Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default())
+    {
+        // The companion may already have been loaded by the generic ASI loader. TrySetup is
+        // idempotent and records that existing module as resident, so capability reporting does
+        // not incorrectly fall back to 2X merely because a different loader got there first.
+        Sm86ProxyLoader::TrySetup();
+        if (Sm86ProxyLoader::LastStatus().DllLoaded)
+        {
+            advertisedMax =
+                std::clamp(Config::Instance()->FGDLSSGAmpereMfgMaxFrames.value_or_default(), 1, 5);
+        }
+    }
+
+    if (const auto adaMax = MfgUnlock::UnlockedMax(); adaMax > 0)
+        advertisedMax = std::max(advertisedMax, static_cast<int>(adaMax));
+#endif
+
+    return advertisedMax;
+}
+
 static void PatchSL1PluginJson(nlohmann::json& configJson)
 {
     if (!IsSL1AndFGActive())
@@ -317,23 +346,7 @@ static sl::Result dummy_slDLSSGGetState(const sl::ViewportHandle& viewport, sl::
     state.numFramesActuallyPresented = 1; // TODO: can do better
     if (state.structVersion >= 2)
     {
-        int advertisedMax = 1;
-#if defined(OPTISCALER_RTX40_MFG)
-        // The game-facing Streamline shim used to advertise 2X unconditionally.  Keep that safe
-        // fallback, but expose the configured SM86 ceiling once its proxy is actually resident.
-        // This path is only returned for native DLSSG input, so upscaler-driven games such as
-        // Vanguard retain their existing forced OptiFG behaviour.
-        if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
-            Sm86ProxyLoader::LastStatus().DllLoaded)
-        {
-            advertisedMax =
-                std::clamp(Config::Instance()->FGDLSSGAmpereMfgMaxFrames.value_or_default(), 1, 5);
-        }
-
-        if (const auto adaMax = MfgUnlock::UnlockedMax(); adaMax > 0)
-            advertisedMax = std::max(advertisedMax, static_cast<int>(adaMax));
-#endif
-        state.numFramesToGenerateMax = advertisedMax;
+        state.numFramesToGenerateMax = GameVisibleDlssgMax();
         state.bIsVsyncSupportAvailable = sl::Boolean::eTrue;
     }
     state.estimatedVRAMUsageInBytes = 300 * 1024 * 1024;
@@ -1184,6 +1197,10 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
             sl::DLSSGOptions localOptions {};
             if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk)
             {
+#if defined(OPTISCALER_RTX40_MFG)
+                localState.numFramesToGenerateMax =
+                    std::max(localState.numFramesToGenerateMax, GameVisibleDlssgMax());
+#endif
                 if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
                 {
                     state.dlssgMfgMax = localState.numFramesToGenerateMax;
@@ -1279,7 +1296,7 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
 #if defined(OPTISCALER_RTX40_MFG)
     // Version 1 has no maximum-count field: retain its ABI boundary.
     if (originalStructVersion >= 2)
-        state.numFramesToGenerateMax = std::max(state.numFramesToGenerateMax, MfgUnlock::UnlockedMax());
+        state.numFramesToGenerateMax = std::max(state.numFramesToGenerateMax, GameVisibleDlssgMax());
 #endif
 
     if (!State::Instance().dlssgGameDMFGSupported)
@@ -1305,6 +1322,10 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
             sl::DLSSGOptions localOptions {};
             if (o_slDLSSGGetState(viewport, localState, &localOptions) == sl::Result::eOk)
             {
+#if defined(OPTISCALER_RTX40_MFG)
+                localState.numFramesToGenerateMax =
+                    std::max(localState.numFramesToGenerateMax, GameVisibleDlssgMax());
+#endif
                 if (localState.numFramesToGenerateMax > 0 && localState.numFramesToGenerateMax < 6)
                 {
                     optiState.dlssgMfgMax = localState.numFramesToGenerateMax;
@@ -1349,18 +1370,7 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
         // ceiling when the matching runtime unlock is live; otherwise preserve the old 2X fallback.
         if (originalStructVersion >= 2)
         {
-            int advertisedMax = 1;
-#if defined(OPTISCALER_RTX40_MFG)
-            if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
-                Sm86ProxyLoader::LastStatus().DllLoaded)
-            {
-                advertisedMax =
-                    std::clamp(Config::Instance()->FGDLSSGAmpereMfgMaxFrames.value_or_default(), 1, 5);
-            }
-
-            if (const auto adaMax = MfgUnlock::UnlockedMax(); adaMax > 0)
-                advertisedMax = std::max(advertisedMax, static_cast<int>(adaMax));
-#endif
+            const int advertisedMax = GameVisibleDlssgMax();
             state.numFramesToGenerateMax = advertisedMax;
             if (advertisedMax > 1)
                 optiState.dlssgMfgMax = std::max(optiState.dlssgMfgMax.value_or(0), advertisedMax);
