@@ -146,10 +146,18 @@ auto DlssNr_Dx12::State::FinishedColorSpace(IDXGISwapChain* swapchain, DXGI_FORM
 auto DlssNr_Dx12::State::UseFinishedPicture() -> bool
 {
     const auto& application = ::State::Instance();
+    const auto& cfg = *Config::Instance();
     const bool frameGenerationActive = application.currentFG && application.currentFG->IsActive() &&
                                        !application.currentFG->IsPaused();
-    return DlssNr::AllowFinishedPicture(Config::Instance()->DlssNrFinishedPicture.value_or_default(),
-                                        frameGenerationActive,
+
+    // DLSSG/OptiFG can be requested several real frames before currentFG reports active.
+    // Treat configured FG as active from the start: a display-swapchain Present is not a
+    // stable game-frame boundary during that warm-up, and replaying a captured RGB edit
+    // there can contaminate SDR colour before the normal FG-safe fallback engages.
+    const bool frameGenerationRequested = cfg.FGEnabled.value_or_default();
+
+    return DlssNr::AllowFinishedPicture(cfg.DlssNrFinishedPicture.value_or_default(),
+                                        frameGenerationActive || frameGenerationRequested,
                                         DlssNr::StreamlinePicture::GameFrameHandoffAvailable());
 }
 
