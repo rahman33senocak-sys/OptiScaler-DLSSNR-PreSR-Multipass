@@ -6,6 +6,12 @@
 
 int main()
 {
+    assert(!DlssNr::AllowFinishedPicture(false, false, false));
+    assert(DlssNr::AllowFinishedPicture(true, false, false));
+    assert(!DlssNr::AllowFinishedPicture(true, true, false));
+    assert(DlssNr::AllowFinishedPicture(true, true, true));
+    std::puts("PASS: finished-picture routing requires an exact game-frame handoff under FG");
+
     // One deferred option selects private SR regardless of whether the game uses RR.
     struct Case { bool before, deferred, legacy, finished, wantsBefore, wantsDeferred; };
     const Case cases[] = {

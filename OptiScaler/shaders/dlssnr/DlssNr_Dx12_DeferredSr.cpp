@@ -555,7 +555,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
     }
     LOG_TRACE("DLSS-NR deferred: applied current-frame contribution at epoch {} (reset {})", epoch, g.reset);
     g.reset = false;
-    if (cfg.DlssNrFinishedPicture.value_or_default())
+    if (owner.UseFinishedPicture())
     {
         const bool sceneLinear =
             ((owner.featureFlags ? owner.featureFlags

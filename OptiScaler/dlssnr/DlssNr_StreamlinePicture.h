@@ -32,4 +32,5 @@ inline Microsoft::WRL::ComPtr<ID3D12CommandQueue> RenderQueue(IDXGISwapChain* sw
 }
 using GetFunction = void* (*)(const char*);
 void* Wrap(const char* name, GetFunction getFunction);
+bool GameFrameHandoffAvailable();
 }

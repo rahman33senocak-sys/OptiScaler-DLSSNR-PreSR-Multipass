@@ -4,6 +4,7 @@
 #include <Config.h>
 #include <State.h>
 #include <Util.h>
+#include <atomic>
 #include <cstring>
 
 namespace DlssNr::StreamlinePicture
@@ -19,6 +20,7 @@ Present1 originalPresent1 = nullptr;
 CreateHwnd originalCreate = nullptr;
 GetIndex getIndex = nullptr;
 GetBuffer getBuffer = nullptr;
+std::atomic_bool gameFrameHandoffAvailable = false;
 
 void Apply(IDXGISwapChain* swapchain, UINT flags, bool skip)
 {
@@ -58,7 +60,10 @@ HRESULT CreateForHwnd(IDXGIFactory2* factory, IUnknown* device, HWND window, con
             ID3D12CommandQueue* real = nullptr;
             if (Util::CheckForRealObject(__FUNCTION__, queue.Get(), (IUnknown**) &real)) queue = real;
             if (SUCCEEDED((*swapchain)->SetPrivateDataInterface(renderQueueKey, queue.Get())))
+            {
+                gameFrameHandoffAvailable.store(true, std::memory_order_release);
                 LOG_INFO("DLSS-NR: native Streamline finished-picture handoff registered on the game render queue");
+            }
         }
     }
     return result;
@@ -81,5 +86,10 @@ void* Wrap(const char* name, GetFunction getFunction)
     if (present1) { originalPresent1 = reinterpret_cast<Present1>(function); return &BeforePresent1; }
     originalCreate = reinterpret_cast<CreateHwnd>(function);
     return &CreateForHwnd;
+}
+
+bool GameFrameHandoffAvailable()
+{
+    return gameFrameHandoffAvailable.load(std::memory_order_acquire);
 }
 }

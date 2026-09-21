@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DlssNr_Dx12_State.h"
+#include <dlssnr/DlssNr_Placement.h>
 #include <dlssnr/DlssNr_StreamlinePicture.h>
 
 void DlssNr_Dx12::ApplyStreamlineFinished(IDXGISwapChain* swapchain, ID3D12Resource* picture, ID3D12CommandQueue* queue)
@@ -140,6 +141,16 @@ auto DlssNr_Dx12::State::FinishedColorSpace(IDXGISwapChain* swapchain, DXGI_FORM
     UINT size = sizeof(space);
     swapchain->GetPrivateData(late.colorSpaceKey, &size, &space);
     return space;
+}
+
+auto DlssNr_Dx12::State::UseFinishedPicture() -> bool
+{
+    const auto& application = ::State::Instance();
+    const bool frameGenerationActive = application.currentFG && application.currentFG->IsActive() &&
+                                       !application.currentFG->IsPaused();
+    return DlssNr::AllowFinishedPicture(Config::Instance()->DlssNrFinishedPicture.value_or_default(),
+                                        frameGenerationActive,
+                                        DlssNr::StreamlinePicture::GameFrameHandoffAvailable());
 }
 
 auto DlssNr_Dx12::State::ApplyToFinishedPicture(IDXGISwapChain* swapchain, ID3D12CommandQueue* queue) -> void

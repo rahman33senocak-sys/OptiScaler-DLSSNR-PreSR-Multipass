@@ -7,9 +7,11 @@ void DlssNr_Dx12::State::EvaluateInternal(ID3D12GraphicsCommandList* cmd, NVSDK_
 {
     std::lock_guard lock(mutex);
     const auto& cfg = *Config::Instance();
+    const bool requestedFinished = cfg.DlssNrFinishedPicture.value_or_default();
+    const bool useFinished = UseFinishedPicture();
     const auto placement = DlssNr::ResolvePlacement(
         cfg.DlssNrRunBeforeSr.value_or_default(), cfg.DlssNrDeferredDlss.value_or_default(),
-        cfg.DlssNrResidualAcrossRr.value_or_default(), cfg.DlssNrFinishedPicture.value_or_default());
+        cfg.DlssNrResidualAcrossRr.value_or_default(), useFinished);
     const unsigned finishedMode = !placement.finished ? 0u : placement.deferred ? 2u : 1u;
     if (lastFinishedMode != finishedMode)
     {
@@ -48,7 +50,11 @@ void DlssNr_Dx12::State::EvaluateInternal(ID3D12GraphicsCommandList* cmd, NVSDK_
         }
     }
     else
+    {
         late.Cancel();
+        if (requestedFinished)
+            late.Say("FG-safe fallback: applying NR after the matched upscale; finished-picture presentation is bypassed.");
+    }
 
     // The game's SR or RR+SR consumes untouched Color. A separate private upscaler reconstructs
     // the NR edit, then applies it after the matching evaluation or saves it for presentation.
