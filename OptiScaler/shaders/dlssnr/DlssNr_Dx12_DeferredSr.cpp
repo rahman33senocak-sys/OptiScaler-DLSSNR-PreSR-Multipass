@@ -40,10 +40,14 @@ auto DlssNr_Dx12::State::DeferredSrContext::Allocate(Generation& g) -> bool
     g.edited = owner.CreateScratch(g.device, g.inputFormat, g.w, g.h);
     g.residualInput = owner.CreateScratch(g.device, DXGI_FORMAT_R16G16B16A16_FLOAT, g.w, g.h);
     g.residualOutput = owner.CreateScratch(g.device, DXGI_FORMAT_R16G16B16A16_FLOAT, g.outW, g.outH);
-    g.clean = owner.CreateScratch(g.device, g.outputFormat, g.outW, g.outH);
+    // Most game SR outputs can be read by the composition shader directly. Keep the old copy only
+    // for the uncommon resource that explicitly denies shader-resource views.
+    if (!g.directOutputRead)
+        g.clean = owner.CreateScratch(g.device, g.outputFormat, g.outW, g.outH);
     g.composed = owner.CreateScratch(g.device, g.outputFormat, g.outW, g.outH);
     g.exposure = owner.CreateScratch(g.device, DXGI_FORMAT_R32_FLOAT, 1, 1);
-    if (!g.edited || !g.residualInput || !g.residualOutput || !g.clean || !g.composed || !g.exposure)
+    if (!g.edited || !g.residualInput || !g.residualOutput || (!g.directOutputRead && !g.clean) || !g.composed ||
+        !g.exposure)
         return false;
     if (g.rayReconstruction)
     {
@@ -142,6 +146,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
             return;
         }
     const auto inDesc = color->GetDesc(), outDesc = output->GetDesc();
+    const bool directOutputRead = (outDesc.Flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE) == 0;
     const auto active =
         DlssNr::PreSrColorExtent(inDesc, UInt(source, NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width),
                                  UInt(source, NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height));
@@ -186,7 +191,8 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
                     current->w != active->width ||
                     current->h != active->height || current->outW != outDesc.Width ||
                     current->outH != outDesc.Height || current->inputFormat != inDesc.Format ||
-                    current->outputFormat != outDesc.Format || current->flags != flags))
+                    current->outputFormat != outDesc.Format || current->directOutputRead != directOutputRead ||
+                    current->flags != flags))
     {
         owner.late.Cancel();
         retired.push_back(std::move(current));
@@ -209,6 +215,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
         current->outH = outDesc.Height;
         current->inputFormat = inDesc.Format;
         current->outputFormat = outDesc.Format;
+        current->directOutputRead = directOutputRead;
         current->flags = flags;
         current->backend = backend;
         current->rayReconstruction = rayReconstruction;
@@ -571,21 +578,35 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
     const auto arrival = cfg.OutputResourceBarrier.has_value()
                              ? (D3D12_RESOURCE_STATES) cfg.OutputResourceBarrier.value()
                              : D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    owner.Barrier(cmd, pair.output, arrival, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    owner.Barrier(cmd, g.clean, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
-    cmd->CopyResource(g.clean, pair.output);
-    owner.Barrier(cmd, g.clean, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    // Read the clean game SR output directly when its resource permits an SRV. R12 duplicated every
+    // full-resolution output even though composition already writes to a distinct target. The guarded
+    // legacy path below preserves compatibility with resources that deny shader-resource views.
+    ID3D12Resource* cleanInput = pair.output;
+    if (g.directOutputRead)
+        owner.Barrier(cmd, pair.output, arrival, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    else
+    {
+        owner.Barrier(cmd, pair.output, arrival, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        owner.Barrier(cmd, g.clean, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+        cmd->CopyResource(g.clean, pair.output);
+        owner.Barrier(cmd, pair.output, D3D12_RESOURCE_STATE_COPY_SOURCE, arrival);
+        owner.Barrier(cmd, g.clean, D3D12_RESOURCE_STATE_COPY_DEST,
+                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        cleanInput = g.clean;
+    }
     DlssNrConstants apply {};
     apply.Mode = DlssNrMode_ApplyResidual;
     apply.Width = g.outW;
     apply.Height = g.outH;
     apply.ExposurePreMul = pair.scale;
-    const bool ok = g.codec->DispatchPass(cmd, apply, g.clean, g.residualOutput, nullptr, nullptr, nullptr,
+    const bool ok = g.codec->DispatchPass(cmd, apply, cleanInput, g.residualOutput, nullptr, nullptr, nullptr,
                                           g.composed, nullptr);
     if (ok)
     {
         owner.Barrier(cmd, g.composed, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
-        owner.Barrier(cmd, pair.output, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+        owner.Barrier(cmd, pair.output,
+                      g.directOutputRead ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : arrival,
+                      D3D12_RESOURCE_STATE_COPY_DEST);
         cmd->CopyResource(pair.output, g.composed);
         owner.Barrier(cmd, pair.output, D3D12_RESOURCE_STATE_COPY_DEST, arrival);
         owner.Barrier(cmd, g.composed, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -596,12 +617,14 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
     }
     else
     {
-        owner.Barrier(cmd, pair.output, D3D12_RESOURCE_STATE_COPY_SOURCE, arrival);
+        if (g.directOutputRead)
+            owner.Barrier(cmd, pair.output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, arrival);
         g.reset = true;
         Say("composition failed; clean frame retained");
     }
-    owner.Barrier(cmd, g.clean, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                  D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    if (g.clean)
+        owner.Barrier(cmd, g.clean, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     owner.Barrier(cmd, g.residualOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
