@@ -65,6 +65,17 @@ static int GameVisibleDlssgMax()
     return advertisedMax;
 }
 
+static bool IsNativeSm86StreamlineDlssg()
+{
+#if defined(OPTISCALER_RTX40_MFG)
+    const auto& state = State::Instance();
+    return Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
+           state.activeFgInput == FGInput::DLSSG && state.activeFgOutput == FGOutput::NoFG;
+#else
+    return false;
+#endif
+}
+
 static void PatchSL1PluginJson(nlohmann::json& configJson)
 {
     if (!IsSL1AndFGActive())
@@ -271,7 +282,8 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         }
     }
 
-    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
+    if ((State::Instance().activeFgInput == FGInput::DLSSG && !IsNativeSm86StreamlineDlssg()) ||
+        State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
         std::vector<sl::Feature> localFeaturesToLoad(pref.featuresToLoad, pref.featuresToLoad + pref.numFeaturesToLoad);
         std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
@@ -361,6 +373,28 @@ static sl::Result dummy_slDLSSGSetOptions(const sl::ViewportHandle& viewport, co
 
 sl::Result StreamlineHooks::hkslGetFeatureFunction(sl::Feature feature, const char* functionName, void*& function)
 {
+    if (feature == sl::kFeatureDLSS_G && IsNativeSm86StreamlineDlssg())
+    {
+        const auto result = o_slGetFeatureFunction(feature, functionName, function);
+        if (result != sl::Result::eOk || function == nullptr)
+            return result;
+
+        // In native SM86 mode keep the real Streamline plugin alive, but retain OptiScaler's
+        // SetOptions/GetState wrappers so the game can select and observe the unlocked multiplier.
+        if (strcmp(functionName, "slDLSSGSetOptions") == 0)
+        {
+            o_slDLSSGSetOptions = reinterpret_cast<decltype(&slDLSSGSetOptions)>(function);
+            function = reinterpret_cast<void*>(&hkslDLSSGSetOptions);
+        }
+        else if (strcmp(functionName, "slDLSSGGetState") == 0)
+        {
+            o_slDLSSGGetState = reinterpret_cast<decltype(&slDLSSGGetState)>(function);
+            function = reinterpret_cast<void*>(&hkslDLSSGGetState);
+        }
+
+        return result;
+    }
+
     if (feature == sl::kFeatureDLSS_G)
     {
         if (strcmp(functionName, "slDLSSGSetOptions") == 0)
@@ -1343,7 +1377,7 @@ sl::Result StreamlineHooks::hkslDLSSGGetState(const sl::ViewportHandle& viewport
         }
     }
 
-    if (optiState.activeFgInput == FGInput::DLSSG)
+    if (optiState.activeFgInput == FGInput::DLSSG && !IsNativeSm86StreamlineDlssg())
     {
         auto fg = optiState.currentFG;
 
