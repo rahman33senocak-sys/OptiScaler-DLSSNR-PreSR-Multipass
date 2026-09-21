@@ -166,6 +166,13 @@ auto DlssNr_Dx12::State::ApplyToFinishedPicture(IDXGISwapChain* swapchain, ID3D1
     std::lock_guard<std::recursive_mutex> lock(mutex);
     if (!swapchain || !queue)
         return;
+
+    // Never edit the display swapchain while FG is configured. Even before the FG object
+    // reports active, Present can already be decoupled from the real game-frame boundary.
+    // The matched-SR path owns NR in that case; native Streamline uses its app-buffer handoff.
+    if (Config::Instance()->FGEnabled.value_or_default())
+        return;
+
     // Native Streamline owns an app-facing buffer set. Its before-present hook handles NR.
     // Editing the underlying display swapchain here races/is overwritten by DLSSG's own copies.
     if (DlssNr::StreamlinePicture::RenderQueue(swapchain))
