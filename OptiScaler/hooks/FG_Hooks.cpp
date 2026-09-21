@@ -95,7 +95,11 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
 {
     if (!CheckForFGStatus())
     {
-        LOG_WARN("Can't init FG Feature or invalid FGOutput setting!");
+        // NvngxFG uses the game's native NGX frame-generation swapchain and deliberately has no external FGOutput.
+        // Returning E_NOINTERFACE lets the normal game swapchain path continue; this is expected, not an error.
+        if (State::Instance().activeFgInput != FGInput::NvngxFG)
+            LOG_WARN("Can't init FG Feature or invalid FGOutput setting!");
+
         return E_NOINTERFACE;
     }
 
@@ -206,7 +210,11 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
 {
     if (!CheckForFGStatus())
     {
-        LOG_WARN("Can't init FG Feature or invalid FGOutput setting!");
+        // NvngxFG uses the game's native NGX frame-generation swapchain and deliberately has no external FGOutput.
+        // Returning E_NOINTERFACE lets the normal game swapchain path continue; this is expected, not an error.
+        if (State::Instance().activeFgInput != FGInput::NvngxFG)
+            LOG_WARN("Can't init FG Feature or invalid FGOutput setting!");
+
         return E_NOINTERFACE;
     }
 
