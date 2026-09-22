@@ -264,6 +264,9 @@ class Config
     CustomOptional<bool> DlssNrDeferredDlss { false };
     // Private carrier: 0 DLSS, 1 FSR 2.2, 2 FidelityFX runtime, 3 XeSS.
     CustomOptional<int> DlssNrPrivateUpscaler { 0 };
+    // Diagnostic only: duplicate private DLSS SR on an isolated compute queue and dummy output.
+    // The live image path is unchanged; use to qualify async-compute support before enabling it live.
+    CustomOptional<bool> DlssNrAsyncPrivateSrProbe { false };
     // Legacy alias for the deferred path when RunBeforeSR is enabled.
     CustomOptional<bool> DlssNrResidualAcrossRr { false };
     // RR history blend before private upscaling, clamped to 0.01..1.

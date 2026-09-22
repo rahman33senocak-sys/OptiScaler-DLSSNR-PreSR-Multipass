@@ -346,6 +346,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             DlssNrHdrTransfer.set_from_config(readBool("DlssNr", "HdrTransfer"));
             DlssNrDeferredDlss.set_from_config(readBool("DlssNr", "DeferredDLSS"));
             DlssNrPrivateUpscaler.set_from_config(readInt("DlssNr", "PrivateUpscaler"));
+            DlssNrAsyncPrivateSrProbe.set_from_config(readBool("DlssNr", "AsyncPrivateSrProbe"));
             DlssNrResidualAcrossRr.set_from_config(readBool("DlssNr", "ResidualAcrossRR"));
             DlssNrResidualAcrossRrBlend.set_from_config(readFloat("DlssNr", "ResidualAcrossRRBlend"));
             DlssNrToggleKey.set_from_config(readInt("DlssNr", "ToggleKey"));
@@ -1269,6 +1270,8 @@ bool Config::SaveIni(std::filesystem::path destination)
                  GetBoolValue(Instance()->DlssNrDeferredDlss.value_for_config()).c_str());
     ini.SetValue("DlssNr", "PrivateUpscaler",
                  GetIntValue(Instance()->DlssNrPrivateUpscaler.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "AsyncPrivateSrProbe",
+                 GetBoolValue(Instance()->DlssNrAsyncPrivateSrProbe.value_for_config()).c_str());
     ini.SetValue("DlssNr", "ResidualAcrossRR",
                  GetBoolValue(Instance()->DlssNrResidualAcrossRr.value_for_config()).c_str());
     ini.SetValue("DlssNr", "ResidualAcrossRRBlend",

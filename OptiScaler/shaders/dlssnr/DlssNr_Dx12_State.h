@@ -226,6 +226,31 @@ struct DlssNr_Dx12::State
             DlssNr::PrivateUpscaler backend = DlssNr::PrivateUpscaler::DLSS;
             std::unique_ptr<DlssNr::PrivateUpscalerDx12> upscaler;
             DlssNr::PrivateUpscalerFrameDx12 frame;
+
+            // Diagnostic shadow path: never writes to the live image. It snapshots the private-SR
+            // inputs on the producer list, then evaluates an independent DLSS feature on COMPUTE.
+            bool shadowProbeEnabled = false;
+            bool shadowCopiesReadable = false;
+            bool shadowPending = false;
+            bool shadowInFlight = false;
+            bool shadowRecorded = false;
+            ID3D12CommandList* shadowProducer = nullptr; // identity only
+            Microsoft::WRL::ComPtr<ID3D12CommandQueue> shadowQueue;
+            Microsoft::WRL::ComPtr<ID3D12CommandAllocator> shadowAllocator;
+            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> shadowCommands;
+            Microsoft::WRL::ComPtr<ID3D12Fence> shadowReadyFence;
+            Microsoft::WRL::ComPtr<ID3D12Fence> shadowDoneFence;
+            UINT64 shadowReadyValue = 0;
+            UINT64 shadowDoneValue = 0;
+            Microsoft::WRL::ComPtr<ID3D12Resource> shadowColor;
+            Microsoft::WRL::ComPtr<ID3D12Resource> shadowDepth;
+            Microsoft::WRL::ComPtr<ID3D12Resource> shadowMotion;
+            Microsoft::WRL::ComPtr<ID3D12Resource> shadowExposure;
+            Microsoft::WRL::ComPtr<ID3D12Resource> shadowOutput;
+            std::unique_ptr<DlssNr::PrivateUpscalerDx12> shadowUpscaler;
+            std::unique_ptr<DlssNrGpuTime> shadowTime;
+            double shadowTotalMs = 0.0;
+            unsigned shadowSamples = 0;
             unsigned long long createEpoch = 0;
             unsigned long long lastBeginEpoch = 0;
             bool began = false;
@@ -233,6 +258,7 @@ struct DlssNr_Dx12::State
             ~Generation()
             {
                 DlssNr_Dx12::Retire(std::move(codec));
+                shadowUpscaler.reset();
                 upscaler.reset(); // Completion protects all four backend histories.
                 if (readback && completed)
                     readback->Unmap(0, nullptr);
@@ -296,6 +322,11 @@ struct DlssNr_Dx12::State
         float Float(NVSDK_NGX_Parameter* p, const char* key, float fallback);
 
         bool Allocate(Generation& g);
+        bool InitShadowAsync(Generation& g);
+        void PollShadowAsync(Generation& g);
+        void RecordShadowAsync(Generation& g, ID3D12GraphicsCommandList* producer);
+        void Submitted(ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists);
+        void ResetRecording(ID3D12CommandList* cmd);
 
         void Before(ID3D12GraphicsCommandList* cmd, NVSDK_NGX_Parameter* source, unsigned long long epoch,
                     unsigned long long submittedEpoch, ID3D12CommandQueue* queue, bool interop, bool rayReconstruction,

@@ -5,6 +5,7 @@ on:
     branches:
       - v0.8.8-sm86-nr
       - perf/sm86-nr
+      - perf/sm86-nr-async-probe
   workflow_dispatch:
 
 permissions:

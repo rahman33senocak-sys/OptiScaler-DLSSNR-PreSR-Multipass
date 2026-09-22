@@ -88,6 +88,229 @@ auto DlssNr_Dx12::State::DeferredSrContext::Allocate(Generation& g) -> bool
     return true;
 }
 
+auto DlssNr_Dx12::State::DeferredSrContext::InitShadowAsync(Generation& g) -> bool
+{
+    D3D12_COMMAND_QUEUE_DESC queueDesc {};
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+    if (FAILED(g.device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&g.shadowQueue))) ||
+        FAILED(g.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE,
+                                                IID_PPV_ARGS(&g.shadowAllocator))) ||
+        FAILED(g.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, g.shadowAllocator.Get(), nullptr,
+                                           IID_PPV_ARGS(&g.shadowCommands))) ||
+        FAILED(g.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g.shadowReadyFence))) ||
+        FAILED(g.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g.shadowDoneFence))))
+        return false;
+    if (FAILED(g.shadowCommands->Close()))
+        return false;
+    g.shadowTime = std::make_unique<DlssNrGpuTime>(g.device);
+    return true;
+}
+
+auto DlssNr_Dx12::State::DeferredSrContext::PollShadowAsync(Generation& g) -> void
+{
+    if (!g.shadowProbeEnabled || !g.shadowInFlight || !g.shadowDoneFence)
+        return;
+    const auto completed = g.shadowDoneFence->GetCompletedValue();
+    if (completed == UINT64_MAX)
+    {
+        g.shadowProbeEnabled = false;
+        LOG_WARN("DLSS-NR async probe disabled: compute queue device removal/fence failure");
+        return;
+    }
+    if (completed < g.shadowDoneValue)
+        return;
+
+    if (g.shadowTime)
+        if (auto ms = g.shadowTime->ReadGpuTime())
+        {
+            g.shadowTotalMs += *ms;
+            ++g.shadowSamples;
+            if (g.shadowSamples == 1 || (g.shadowSamples % 120) == 0)
+                LOG_INFO("DLSS-NR async probe: compute private SR {:.2f} ms (mean {:.2f} ms over {} samples)",
+                         *ms, g.shadowTotalMs / double(g.shadowSamples), g.shadowSamples);
+        }
+
+    lifetime.ResetRecording(g.shadowCommands.Get());
+    g.shadowInFlight = false;
+}
+
+auto DlssNr_Dx12::State::DeferredSrContext::RecordShadowAsync(
+    Generation& g, ID3D12GraphicsCommandList* producer) -> void
+{
+    if (!g.shadowProbeEnabled || !g.shadowUpscaler || !g.shadowQueue || !g.shadowCommands)
+        return;
+
+    PollShadowAsync(g);
+    if (g.shadowPending || g.shadowInFlight)
+        return;
+
+    auto createCopy = [&](Microsoft::WRL::ComPtr<ID3D12Resource>& target, ID3D12Resource* source) -> bool
+    {
+        if (target)
+            return true;
+        if (!source)
+            return false;
+        const auto desc = source->GetDesc();
+        const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        return SUCCEEDED(g.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                           D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                           IID_PPV_ARGS(&target)));
+    };
+    if (!createCopy(g.shadowColor, g.frame.color.resource) ||
+        !createCopy(g.shadowDepth, g.frame.depth.resource) ||
+        !createCopy(g.shadowMotion, g.frame.motion.resource) ||
+        !createCopy(g.shadowExposure, g.frame.exposure.resource))
+    {
+        g.shadowProbeEnabled = false;
+        LOG_WARN("DLSS-NR async probe disabled: failed to allocate isolated input copies");
+        return;
+    }
+    if (!g.shadowOutput)
+        g.shadowOutput.Attach(owner.CreateScratch(g.device, DXGI_FORMAT_R16G16B16A16_FLOAT, g.outW, g.outH));
+    if (!g.shadowOutput)
+    {
+        g.shadowProbeEnabled = false;
+        LOG_WARN("DLSS-NR async probe disabled: failed to allocate dummy output");
+        return;
+    }
+
+    auto snapshot = [&](DlssNr::PrivateUpscalerResourceDx12 source,
+                        ID3D12Resource* target)
+    {
+        if (source.state != D3D12_RESOURCE_STATE_COPY_SOURCE)
+            owner.Barrier(producer, source.resource, source.state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        if (g.shadowCopiesReadable)
+            owner.Barrier(producer, target, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                          D3D12_RESOURCE_STATE_COPY_DEST);
+        producer->CopyResource(target, source.resource);
+        owner.Barrier(producer, target, D3D12_RESOURCE_STATE_COPY_DEST,
+                      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (source.state != D3D12_RESOURCE_STATE_COPY_SOURCE)
+            owner.Barrier(producer, source.resource, D3D12_RESOURCE_STATE_COPY_SOURCE, source.state);
+    };
+    snapshot(g.frame.color, g.shadowColor.Get());
+    snapshot(g.frame.depth, g.shadowDepth.Get());
+    snapshot(g.frame.motion, g.shadowMotion.Get());
+    snapshot(g.frame.exposure, g.shadowExposure.Get());
+    g.shadowCopiesReadable = true;
+
+    if (g.shadowRecorded)
+    {
+        if (FAILED(g.shadowAllocator->Reset()) ||
+            FAILED(g.shadowCommands->Reset(g.shadowAllocator.Get(), nullptr)))
+        {
+            g.shadowProbeEnabled = false;
+            LOG_WARN("DLSS-NR async probe disabled: compute command-list reset failed");
+            return;
+        }
+    }
+    else
+    {
+        if (FAILED(g.shadowAllocator->Reset()) ||
+            FAILED(g.shadowCommands->Reset(g.shadowAllocator.Get(), nullptr)))
+        {
+            g.shadowProbeEnabled = false;
+            LOG_WARN("DLSS-NR async probe disabled: initial compute command-list reset failed");
+            return;
+        }
+        g.shadowRecorded = true;
+    }
+
+    auto frame = g.frame;
+    frame.color = { g.shadowColor.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE };
+    frame.depth = { g.shadowDepth.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE };
+    frame.motion = { g.shadowMotion.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE };
+    frame.exposure = { g.shadowExposure.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE };
+    frame.output = { g.shadowOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS };
+    // The probe may skip frames while the compute queue is busy. Reset its independent history
+    // so a timing experiment can never depend on stale temporal state.
+    frame.reset = true;
+
+    lifetime.Record(g.shadowCommands.Get());
+    if (g.shadowTime)
+        g.shadowTime->Start(g.shadowCommands.Get());
+    const bool recorded = g.shadowUpscaler->Evaluate(g.shadowCommands.Get(), frame);
+    if (g.shadowTime)
+        g.shadowTime->End(g.shadowCommands.Get());
+    if (!recorded || FAILED(g.shadowCommands->Close()))
+    {
+        lifetime.ResetRecording(g.shadowCommands.Get());
+        g.shadowProbeEnabled = false;
+        LOG_WARN("DLSS-NR async probe disabled: compute DLSS recording failed ({})",
+                 g.shadowUpscaler->Error());
+        return;
+    }
+
+    ID3D12CommandList* real = nullptr;
+    g.shadowProducer = Util::CheckForRealObject(__FUNCTION__, producer, (IUnknown**)&real) ? real : producer;
+    g.shadowPending = true;
+}
+
+auto DlssNr_Dx12::State::DeferredSrContext::Submitted(
+    ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) -> void
+{
+    lifetime.Submitted(queue, count, lists);
+    if (!current || !current->shadowProbeEnabled || !current->shadowPending)
+        return;
+    auto& g = *current;
+    bool matched = false;
+    for (UINT i = 0; i < count; ++i)
+    {
+        ID3D12CommandList* real = nullptr;
+        auto* identity = Util::CheckForRealObject(__FUNCTION__, lists[i], (IUnknown**)&real) ? real : lists[i];
+        if (identity == g.shadowProducer)
+        {
+            matched = true;
+            break;
+        }
+    }
+    if (!matched)
+        return;
+
+    g.shadowPending = false;
+    g.shadowProducer = nullptr;
+    const auto ready = ++g.shadowReadyValue;
+    if (FAILED(queue->Signal(g.shadowReadyFence.Get(), ready)) ||
+        FAILED(g.shadowQueue->Wait(g.shadowReadyFence.Get(), ready)))
+    {
+        lifetime.ResetRecording(g.shadowCommands.Get());
+        g.shadowProbeEnabled = false;
+        LOG_WARN("DLSS-NR async probe disabled: producer-to-compute fence failed");
+        return;
+    }
+
+    ID3D12CommandList* work[] = { g.shadowCommands.Get() };
+    g.shadowInFlight = true; // Set before ExecuteCommandLists in case hooks re-enter this callback.
+    g.shadowQueue->ExecuteCommandLists(1, work);
+    if (g.shadowTime)
+        g.shadowTime->Submitted(g.shadowQueue.Get(), 1, work);
+    lifetime.Submitted(g.shadowQueue.Get(), 1, work);
+    const auto done = ++g.shadowDoneValue;
+    if (FAILED(g.shadowQueue->Signal(g.shadowDoneFence.Get(), done)))
+    {
+        g.shadowProbeEnabled = false;
+        LOG_WARN("DLSS-NR async probe disabled: compute completion fence failed");
+        return;
+    }
+    LOG_TRACE("DLSS-NR async probe: submitted private SR on isolated compute queue");
+}
+
+auto DlssNr_Dx12::State::DeferredSrContext::ResetRecording(ID3D12CommandList* cmd) -> void
+{
+    lifetime.ResetRecording(cmd);
+    if (!current || !current->shadowPending)
+        return;
+    ID3D12CommandList* real = nullptr;
+    auto* identity = Util::CheckForRealObject(__FUNCTION__, cmd, (IUnknown**)&real) ? real : cmd;
+    if (identity != current->shadowProducer)
+        return;
+    if (current->shadowTime)
+        current->shadowTime->ResetRecording(current->shadowCommands.Get());
+    lifetime.ResetRecording(current->shadowCommands.Get());
+    current->shadowPending = false;
+    current->shadowProducer = nullptr;
+}
+
 auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cmd, NVSDK_NGX_Parameter* source, unsigned long long epoch,
                     unsigned long long submittedEpoch, ID3D12CommandQueue* queue, bool interop, bool rayReconstruction,
                     bool finishedPicture) -> void
@@ -187,11 +410,14 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
         ? DlssNr::PrivateUpscalerDx12::ReadRrInputs(source, active->width, active->height)
         : DlssNr::PrivateRrInputsDx12 {};
     const bool privateRr = rrInputs.valid;
+    const bool shadowProbe = cfg.DlssNrAsyncPrivateSrProbe.value_or_default() &&
+                             backend == DlssNr::PrivateUpscaler::DLSS && !privateRr;
     if (current && (current->rayReconstruction != rayReconstruction ||
                     current->privateRr != privateRr ||
                     (privateRr && (current->frame.rr.roughnessMode != rrInputs.roughnessMode ||
                                    current->frame.rr.hardwareDepth != rrInputs.hardwareDepth)) ||
                     current->finishedPicture != finishedPicture ||
+                    current->shadowProbeEnabled != shadowProbe ||
                     current->backend != backend || current->device != device || current->queue != ownerQueue ||
                     current->w != active->width ||
                     current->h != active->height || current->outW != outDesc.Width ||
@@ -223,6 +449,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
         current->backend = backend;
         current->rayReconstruction = rayReconstruction;
         current->privateRr = privateRr;
+        current->shadowProbeEnabled = shadowProbe;
         if (backend == DlssNr::PrivateUpscaler::DLSS)
             LOG_INFO("DLSS-NR private residual upscaler: {} ({})", privateRr ? "DLSS RR" : "DLSS SR",
                      privateRr ? "game RR guides available" : "game RR guides unavailable for this API/extent");
@@ -293,6 +520,19 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
             Say(std::string("private ") + g.upscaler->Name() +
                 " creation failed: " + g.upscaler->Error() + "; clean SR frame retained");
             return;
+        }
+        if (g.shadowProbeEnabled)
+        {
+            g.shadowUpscaler = std::make_unique<DlssNr::PrivateUpscalerDx12>(DlssNr::PrivateUpscaler::DLSS);
+            if (!g.shadowUpscaler->Init(g.device, cmd, info) || !InitShadowAsync(g))
+            {
+                LOG_WARN("DLSS-NR async probe unavailable: {}",
+                         g.shadowUpscaler ? g.shadowUpscaler->Error() : "compute queue initialization failed");
+                g.shadowUpscaler.reset();
+                g.shadowProbeEnabled = false;
+            }
+            else
+                LOG_INFO("DLSS-NR async probe armed: independent DLSS SR feature + D3D12 compute queue");
         }
         DlssNrConstants unit {};
         unit.Mode = DlssNrMode_UnitExposure;
@@ -537,6 +777,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
     }
     auto& g = *current;
     const auto& cfg = *Config::Instance();
+    PollShadowAsync(g);
     if ((cfg.RestoreComputeSignature.value_or_default() || cfg.RestoreGraphicSignature.value_or_default()) &&
         !D3D12Hooks::CanRestoreRootSignature(cmd))
     {
@@ -568,6 +809,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
             " evaluation failed: " + g.upscaler->Error() + "; clean SR frame retained");
         return;
     }
+    RecordShadowAsync(g, cmd);
     LOG_TRACE("DLSS-NR deferred: applied current-frame contribution at epoch {} (reset {})", epoch, g.reset);
     g.reset = false;
     if (g.finishedPicture)
