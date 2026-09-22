@@ -638,6 +638,12 @@ void ApplyToFinishedPicture(IDXGISwapChain* swapchain, ID3D12CommandQueue* queue
 {
     if (::State::Instance().isShuttingDown)
         return;
+
+    // Defense in depth: when FG is configured, never replay a captured NR edit onto the
+    // display swapchain. The safe native Streamline app-buffer path calls ApplyToStreamlinePicture.
+    if (Config::Instance()->FGEnabled.value_or_default())
+        return;
+
     Microsoft::WRL::ComPtr<IDXGISwapChain3> chain;
     Microsoft::WRL::ComPtr<ID3D12Resource> picture;
     auto space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
