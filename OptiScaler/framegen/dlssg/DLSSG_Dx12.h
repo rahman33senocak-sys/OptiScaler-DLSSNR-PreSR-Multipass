@@ -17,6 +17,9 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     ID3D12Fence* dlssgFence[BUFFER_COUNT] = {};
     UINT64 lastOptionFrame = 0;
 
+    bool _presentStatePrimed = false;
+    uint32_t _lastRuntimeStatus = UINT_MAX;
+
     bool Dispatch();
 
   protected:
@@ -47,6 +50,7 @@ class DLSSG_Dx12 : public virtual IFGFeature_Dx12
     void EvaluateState(ID3D12Device* device, FG_Constants& fgConstants) override final;
 
     bool Present() override final;
+    void UpdatePresentedState(HRESULT presentResult);
 
     bool SetResource(Dx12Resource* inputResource) override final;
     void SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue) override final;
