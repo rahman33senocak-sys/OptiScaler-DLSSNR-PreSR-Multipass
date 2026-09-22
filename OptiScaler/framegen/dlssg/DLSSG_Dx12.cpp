@@ -301,6 +301,8 @@ void DLSSG_Dx12::Activate()
     {
 
         UpdateTarget();
+        _presentStatePrimed = false;
+        State::Instance().dlssgDetectedInterpolationCount = 0;
         _isActive = true;
     }
 }
@@ -321,6 +323,8 @@ void DLSSG_Dx12::Deactivate()
         reflexConst.useMarkersToOptimize = false;
         StreamlineProxy::ReflexSetOptions()(reflexConst);
 
+        _presentStatePrimed = false;
+        State::Instance().dlssgDetectedInterpolationCount = 0;
         _isActive = false;
     }
 }
@@ -825,6 +829,41 @@ void DLSSG_Dx12::CreateObjects(ID3D12Device* InDevice)
         }
 
     } while (false);
+}
+
+void DLSSG_Dx12::UpdatePresentedState(HRESULT presentResult)
+{
+    auto& state = State::Instance();
+    if (presentResult != S_OK || !IsActive() || IsPaused())
+    {
+        state.dlssgDetectedInterpolationCount = 0;
+        _presentStatePrimed = false;
+        return;
+    }
+
+    sl::DLSSGState runtime {};
+    const auto query = StreamlineProxy::DLSSGGetState()(viewport, runtime, nullptr);
+    const auto status = static_cast<uint32_t>(runtime.status);
+    const bool queryUsable = query == sl::Result::eOk || query == sl::Result::eWarnOutOfVRAM;
+    const bool valid = queryUsable && runtime.status == sl::DLSSGStatus::eOk;
+
+    int observed = state.dlssgDetectedInterpolationCount;
+    if (valid)
+    {
+        observed = _presentStatePrimed && runtime.numFramesActuallyPresented > 1 &&
+                           runtime.numFramesActuallyPresented <= 6
+                       ? static_cast<int>(runtime.numFramesActuallyPresented - 1) : 0;
+        _presentStatePrimed = true;
+    }
+
+    if (state.dlssgDetectedInterpolationCount != observed || _lastRuntimeStatus != status)
+    {
+        LOG_INFO("DLSSG presentation: query={}, status=0x{:X}, presented={}, observed extra={}",
+                 magic_enum::enum_name(query), status, runtime.numFramesActuallyPresented, observed);
+    }
+
+    state.dlssgDetectedInterpolationCount = observed;
+    _lastRuntimeStatus = status;
 }
 
 bool DLSSG_Dx12::Present()
