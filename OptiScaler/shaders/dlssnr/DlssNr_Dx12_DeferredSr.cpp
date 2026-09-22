@@ -89,7 +89,8 @@ auto DlssNr_Dx12::State::DeferredSrContext::Allocate(Generation& g) -> bool
 }
 
 auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cmd, NVSDK_NGX_Parameter* source, unsigned long long epoch,
-                    unsigned long long submittedEpoch, ID3D12CommandQueue* queue, bool interop, bool rayReconstruction) -> void
+                    unsigned long long submittedEpoch, ID3D12CommandQueue* queue, bool interop, bool rayReconstruction,
+                    bool finishedPicture) -> void
 {
     if (pending.cmd && current)
     {
@@ -117,7 +118,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
     const auto& cfg = *Config::Instance();
     if (cfg.DlssNrDebugView.value_or_default() != 0 ||
         cfg.DlssNrCompare.value_or_default() != 0 || cfg.DlssNrShowSkinMask.value_or_default() ||
-        (!cfg.DlssNrApplyModel.value_or_default() && !cfg.DlssNrFinishedPicture.value_or_default()))
+        (!cfg.DlssNrApplyModel.value_or_default() && !finishedPicture))
     {
         Say("Disable Debug/Compare and enable Apply model.");
         return;
@@ -190,7 +191,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
                     current->privateRr != privateRr ||
                     (privateRr && (current->frame.rr.roughnessMode != rrInputs.roughnessMode ||
                                    current->frame.rr.hardwareDepth != rrInputs.hardwareDepth)) ||
-                    current->finishedPicture != cfg.DlssNrFinishedPicture.value_or_default() ||
+                    current->finishedPicture != finishedPicture ||
                     current->backend != backend || current->device != device || current->queue != ownerQueue ||
                     current->w != active->width ||
                     current->h != active->height || current->outW != outDesc.Width ||
@@ -225,7 +226,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
         if (backend == DlssNr::PrivateUpscaler::DLSS)
             LOG_INFO("DLSS-NR private residual upscaler: {} ({})", privateRr ? "DLSS RR" : "DLSS SR",
                      privateRr ? "game RR guides available" : "game RR guides unavailable for this API/extent");
-        current->finishedPicture = cfg.DlssNrFinishedPicture.value_or_default();
+        current->finishedPicture = finishedPicture;
         if (!Allocate(*current))
         {
             current->failed = true;
@@ -460,7 +461,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::Before(ID3D12GraphicsCommandList* cm
             g.reset = true;
             Say("waiting for RR residual accumulation; clean game frame retained");
         }
-        else if (cfg.DlssNrFinishedPicture.value_or_default())
+        else if (g.finishedPicture)
         {
             encode.Mode = 5; // finished-colour shader: encode relative changes before FP16 storage
             encode.WhitePoint = frame.PreExposure;
@@ -569,7 +570,7 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
     }
     LOG_TRACE("DLSS-NR deferred: applied current-frame contribution at epoch {} (reset {})", epoch, g.reset);
     g.reset = false;
-    if (cfg.DlssNrFinishedPicture.value_or_default())
+    if (g.finishedPicture)
     {
         const bool sceneLinear =
             ((owner.featureFlags ? owner.featureFlags
