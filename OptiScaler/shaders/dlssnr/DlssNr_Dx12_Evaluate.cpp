@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DlssNr_Dx12_State.h"
+#include <dlssnr/DlssNr_StreamlinePicture.h>
 
 void DlssNr_Dx12::State::EvaluateInternal(ID3D12GraphicsCommandList* cmd, NVSDK_NGX_Parameter* params,
                                          bool beforeUpscale, ID3D12CommandQueue* queue, bool rayReconstruction,
@@ -7,9 +8,26 @@ void DlssNr_Dx12::State::EvaluateInternal(ID3D12GraphicsCommandList* cmd, NVSDK_
 {
     std::lock_guard lock(mutex);
     const auto& cfg = *Config::Instance();
-    const auto placement = DlssNr::ResolvePlacement(
+    auto placement = DlssNr::ResolvePlacement(
         cfg.DlssNrRunBeforeSr.value_or_default(), cfg.DlssNrDeferredDlss.value_or_default(),
         cfg.DlssNrResidualAcrossRr.value_or_default(), cfg.DlssNrFinishedPicture.value_or_default());
+
+    // A display Present is not a stable game-frame boundary while FG is configured.
+    // Keep the deferred/matched-SR work, but do not carry its colour edit to the display
+    // swapchain unless Streamline gave us the exact app-facing game-frame handoff.
+    const bool frameGenerationConfigured = cfg.FGEnabled.value_or_default();
+    const bool exactGameFrameHandoff = DlssNr::StreamlinePicture::GameFrameHandoffAvailable();
+    if (placement.finished && frameGenerationConfigured && !exactGameFrameHandoff)
+    {
+        placement.finished = false;
+        static bool warned = false;
+        if (!warned)
+        {
+            LOG_INFO("DLSS-NR FG-safe fallback: finished-picture presentation bypassed; applying NR at the matched SR seam");
+            warned = true;
+        }
+    }
+
     const unsigned finishedMode = !placement.finished ? 0u : placement.deferred ? 2u : 1u;
     if (lastFinishedMode != finishedMode)
     {
