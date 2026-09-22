@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v0.8.8-sm86-nr
+      - perf/sm86-nr
   workflow_dispatch:
 
 permissions:
