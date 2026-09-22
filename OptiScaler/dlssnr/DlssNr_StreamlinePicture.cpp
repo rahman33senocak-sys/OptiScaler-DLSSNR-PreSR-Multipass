@@ -4,6 +4,7 @@
 #include <Config.h>
 #include <State.h>
 #include <Util.h>
+#include <atomic>
 #include <cstring>
 
 namespace DlssNr::StreamlinePicture
@@ -15,6 +16,7 @@ using Present1 = HRESULT (*)(IDXGISwapChain*, UINT, UINT, const DXGI_PRESENT_PAR
 using CreateHwnd = HRESULT (*)(IDXGIFactory2*, IUnknown*, HWND, const DXGI_SWAP_CHAIN_DESC1*,
                               const DXGI_SWAP_CHAIN_FULLSCREEN_DESC*, IDXGIOutput*, IDXGISwapChain1**, bool&);
 using Create = HRESULT (*)(IDXGIFactory*, IUnknown*, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, bool&);
+std::atomic_bool gameFrameHandoffAvailable = false;
 
 void RegisterQueue(HRESULT result, bool handled, IUnknown* device, IDXGISwapChain* swapchain)
 {
@@ -28,7 +30,10 @@ void RegisterQueue(HRESULT result, bool handled, IUnknown* device, IDXGISwapChai
         ID3D12CommandQueue* real = nullptr;
         if (Util::CheckForRealObject(__FUNCTION__, queue.Get(), (IUnknown**) &real)) queue = real;
         if (SUCCEEDED(swapchain->SetPrivateDataInterface(renderQueueKey, queue.Get())))
+        {
+            gameFrameHandoffAvailable.store(true, std::memory_order_release);
             LOG_INFO("DLSS-NR: Streamline finished-picture handoff registered on the game render queue");
+        }
     }
 }
 
@@ -111,5 +116,10 @@ void* Wrap(const char* name, GetFunction getFunction, bool local)
                   State::Instance().activeFgNvngx != FGNvngxReplacement::None))
         return nullptr;
     return local ? Hooks<true>::Wrap(name, getFunction) : Hooks<false>::Wrap(name, getFunction);
+}
+
+bool GameFrameHandoffAvailable()
+{
+    return gameFrameHandoffAvailable.load(std::memory_order_acquire);
 }
 }
