@@ -706,6 +706,10 @@ class Config
     CustomOptional<std::string, NoDefault> FGDLSSGAdaTemporalFix; // Auto / Retarget / Ptx
     CustomOptional<bool> FGDLSSGAdaFlipMeteringPatch { false };   // pin sl.dlss_g to software frame pacing
 #endif
+    // RTX 30/20 SM86/SM75 companion path. The external version.asi owns the architecture-specific
+    // DLSS-G patch while OptiScaler keeps the normal DLSSG output path and user-selected ceiling.
+    CustomOptional<bool> FGDLSSGAmpereMfgUnlock { false };
+    CustomOptional<int> FGDLSSGAmpereMfgMaxFrames { 1 }; // 1=2X, 2=3X, 3=4X, 4=5X, 5=6X
     CustomOptional<int> FGDLSSGInterpolationCount { 1 }; // For Opti's own SL instance
     CustomOptional<bool> FGDLSSGUseGamesReflexMarkers { true };
     CustomOptional<int, NoDefault>
