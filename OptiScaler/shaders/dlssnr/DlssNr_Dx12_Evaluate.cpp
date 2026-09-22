@@ -82,7 +82,7 @@ void DlssNr_Dx12::State::EvaluateInternal(ID3D12GraphicsCommandList* cmd, NVSDK_
     const auto submitted = interop ? submissionEpoch : ::State::Instance().frameCount;
     const auto epoch = seamClock.AtSeam(beforeUpscale, interop, submitted);
     if (beforeUpscale)
-        deferredSr.Before(cmd, params, epoch, submitted, queue, interop, rayReconstruction);
+        deferredSr.Before(cmd, params, epoch, submitted, queue, interop, rayReconstruction, placement.finished);
     else
         deferredSr.After(cmd, params, epoch);
 }
