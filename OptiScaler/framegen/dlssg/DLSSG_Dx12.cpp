@@ -368,6 +368,15 @@ bool DLSSG_Dx12::Dispatch()
 
     auto& state = State::Instance();
 
+    // The SM86 companion can expose a larger runtime ceiling than is practical on an 8 GB Ampere card.
+    // Respect the user's selected maximum before the ordinary runtime cap is applied.
+    if (Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default())
+    {
+        const auto ceiling = std::clamp(Config::Instance()->FGDLSSGAmpereMfgMaxFrames.value_or_default(), 1, 5);
+        if (Config::Instance()->FGDLSSGInterpolationCount.value_or_default() > ceiling)
+            Config::Instance()->FGDLSSGInterpolationCount.set_volatile_value(ceiling);
+    }
+
     if (Config::Instance()->FGDLSSGInterpolationCount.value_or_default() > _maxInterpolationCount)
     {
         Config::Instance()->FGDLSSGInterpolationCount = _maxInterpolationCount;
