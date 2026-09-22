@@ -1,0 +1,35 @@
+name: Build v0.8.8 SM86 NR
+
+on:
+  push:
+    branches:
+      - v0.8.8-sm86-nr
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Package v0.8.8 SM86 NR
+        shell: powershell
+        run: ./package_release.ps1 -Version "v0.8.8-sm86-nr"
+
+      - name: Upload ready ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: OptiScaler-NR-v0.8.8-sm86-nr
+          path: release/*.zip
+          if-no-files-found: error
+          retention-days: 14
