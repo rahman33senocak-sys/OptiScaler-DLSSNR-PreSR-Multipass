@@ -89,6 +89,13 @@ struct DlssNr_Dx12::State
     std::optional<double> lastNgxTime;
     std::optional<double> lastGpuTime;
 
+    // Deferred route diagnostics. These timestamp only the extra private upscaler
+    // and matched-SR residual composition, without changing the rendering path.
+    std::unique_ptr<DlssNrGpuTime> privateSrTime;
+    std::unique_ptr<DlssNrGpuTime> deferredComposeTime;
+    std::optional<double> lastPrivateSrTime;
+    std::optional<double> lastDeferredComposeTime;
+
     // Writes matched before/after frames on request, so comparisons stop depending on video.
     capture::FrameCapture captureFrames;
     DlssNr::PipelineCaptureFrame* pipelineCapture = nullptr; // Owned by lifetime retirement after End.

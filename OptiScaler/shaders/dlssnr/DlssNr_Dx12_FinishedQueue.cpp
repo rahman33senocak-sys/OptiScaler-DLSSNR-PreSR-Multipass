@@ -29,6 +29,10 @@ auto DlssNr_Dx12::State::FinishedPictureResetCommandList(ID3D12CommandList* cmd)
         gpuTime->ResetRecording(cmd);
     if (ngxTime)
         ngxTime->ResetRecording(cmd);
+    if (privateSrTime)
+        privateSrTime->ResetRecording(cmd);
+    if (deferredComposeTime)
+        deferredComposeTime->ResetRecording(cmd);
     if (!late.tracking.load())
         return;
     for (auto& slot : late.slots)
@@ -103,6 +107,10 @@ auto DlssNr_Dx12::State::FinishedPictureSubmitted(ID3D12CommandQueue* queue, UIN
         gpuTime->Submitted(queue, count, lists);
     if (ngxTime)
         ngxTime->Submitted(queue, count, lists);
+    if (privateSrTime)
+        privateSrTime->Submitted(queue, count, lists);
+    if (deferredComposeTime)
+        deferredComposeTime->Submitted(queue, count, lists);
     if (!late.tracking.load())
         return;
     for (auto& slot : late.slots)

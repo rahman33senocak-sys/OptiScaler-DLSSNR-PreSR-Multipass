@@ -34,8 +34,12 @@ void DlssNr_Dx12::State::EvaluateInternal(ID3D12GraphicsCommandList* cmd, NVSDK_
         nr.reset = true;
         if (gpuTime) gpuTime->ClearLast();
         if (ngxTime) ngxTime->ClearLast();
+        if (privateSrTime) privateSrTime->ClearLast();
+        if (deferredComposeTime) deferredComposeTime->ClearLast();
         lastGpuTime.reset();
         lastNgxTime.reset();
+        lastPrivateSrTime.reset();
+        lastDeferredComposeTime.reset();
         late.Cancel();
         deferredSr.Cancel();
         lastFinishedMode = finishedMode;

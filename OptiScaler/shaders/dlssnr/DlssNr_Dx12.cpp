@@ -443,8 +443,14 @@ bool DlssNr_Dx12::ProcessSeam(ID3D12GraphicsCommandList* cmd, NVSDK_NGX_Paramete
                 _state->gpuTime->ClearLast();
             if (_state->ngxTime)
                 _state->ngxTime->ClearLast();
+            if (_state->privateSrTime)
+                _state->privateSrTime->ClearLast();
+            if (_state->deferredComposeTime)
+                _state->deferredComposeTime->ClearLast();
             _state->lastGpuTime.reset();
             _state->lastNgxTime.reset();
+            _state->lastPrivateSrTime.reset();
+            _state->lastDeferredComposeTime.reset();
         }
         _state->late.Cancel();
         _state->deferredSr.Cancel();

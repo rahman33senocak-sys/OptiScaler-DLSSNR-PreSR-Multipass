@@ -76,5 +76,8 @@ void DlssNr_Dx12::State::EndGpuTiming(ID3D12GraphicsCommandList* cmdList)
         LOG_INFO("DLSS-NR elapsed: {:.2f} ms total, {:.2f} ms model, {:.2f} ms surrounding work ({:.0f}%; "
                  "intervals may include other GPU work)",
                  total, ngx, total - ngx, total > 0.0 ? 100.0 * (total - ngx) / total : 0.0);
+        if (lastPrivateSrTime || lastDeferredComposeTime)
+            LOG_INFO("DLSS-NR deferred extras: private SR {:.2f} ms, matched-SR composition {:.2f} ms",
+                     lastPrivateSrTime.value_or(0.0), lastDeferredComposeTime.value_or(0.0));
     }
 }

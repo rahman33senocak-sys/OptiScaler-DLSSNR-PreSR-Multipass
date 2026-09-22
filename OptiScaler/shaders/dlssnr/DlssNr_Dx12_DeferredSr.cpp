@@ -553,7 +553,14 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
         return;
     }
     ScopedNrStateEnvelope envelope(cmd);
-    if (!g.upscaler->Evaluate(cmd, g.frame))
+    if (!owner.privateSrTime)
+        owner.privateSrTime = std::make_unique<DlssNrGpuTime>(g.device);
+    owner.privateSrTime->Start(cmd);
+    const bool privateUpscaleOk = g.upscaler->Evaluate(cmd, g.frame);
+    owner.privateSrTime->End(cmd);
+    if (auto ms = owner.privateSrTime->ReadGpuTime())
+        owner.lastPrivateSrTime = ms;
+    if (!privateUpscaleOk)
     {
         g.failed = true;
         Say(std::string("private ") + g.upscaler->Name() +
@@ -579,6 +586,10 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
         }
         return; // The finished-picture path owns composition; the game's SR output stays clean.
     }
+
+    if (!owner.deferredComposeTime)
+        owner.deferredComposeTime = std::make_unique<DlssNrGpuTime>(g.device);
+    owner.deferredComposeTime->Start(cmd);
 
     owner.Barrier(cmd, g.residualOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                   D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -618,6 +629,10 @@ auto DlssNr_Dx12::State::DeferredSrContext::After(ID3D12GraphicsCommandList* cmd
                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     owner.Barrier(cmd, g.residualOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    owner.deferredComposeTime->End(cmd);
+    if (auto ms = owner.deferredComposeTime->ReadGpuTime())
+        owner.lastDeferredComposeTime = ms;
 }
 
 auto DlssNr_Dx12::State::DeferredSrContext::ReleaseResources() -> void
