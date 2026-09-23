@@ -53,17 +53,8 @@ std::string GenerateIniContent()
     if (kernelImg != "PTX" && kernelImg != "Cubin")
         kernelImg = "Auto";
 
-    if (kernelImg == "Auto")
-    {
-        std::string resolved = ResolveAutoKernelImage();
-        if (resolved != "Auto")
-        {
-            LOG_INFO("AmpereMfgLoader: Auto kernel image resolved to {} for GPU: {}", resolved,
-                     IdentifyGpu::getPrimaryGpu().name);
-            kernelImg = resolved;
-        }
-    }
-
+    // 0.3.5 knows the physical GPU and driver. Keep Auto intact so SM86 can use cubin_sm86
+    // and fall back to PTX itself if the driver rejects the cubin.
     int hwBilinear = cfg->FGDLSSGAmpereMfgHardwareBilinear.value_or_default() ? 1 : 0;
     std::string router = ResolveRouter();
     int logLevel = 1;
