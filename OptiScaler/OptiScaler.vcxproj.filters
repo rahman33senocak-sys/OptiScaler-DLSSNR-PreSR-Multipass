@@ -787,6 +787,9 @@
     <ClInclude Include="framegen\dlssg\MfgUnlock.h">
       <Filter>framegen</Filter>
     </ClInclude>
+    <ClInclude Include="framegen\dlssg\AmpereMfgLoader.h">
+      <Filter>framegen</Filter>
+    </ClInclude>
     <ClInclude Include="framegen\dlssg\Kcd2Hdr.h">
       <Filter>framegen</Filter>
     </ClInclude>
@@ -1424,6 +1427,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\dlssg\MfgUnlock.cpp">
+      <Filter>framegen</Filter>
+    </ClCompile>
+    <ClCompile Include="framegen\dlssg\AmpereMfgLoader.cpp">
       <Filter>framegen</Filter>
     </ClCompile>
     <ClCompile Include="framegen\dlssg\Kcd2Hdr.cpp">

@@ -179,6 +179,7 @@ class State
 
     // Frame Generation
     FGInput activeFgInput = FGInput::NoFG;
+    bool externalFrameGeneration = false; // startup-only: external MFG owns FG hooks
     FGOutput activeFgOutput = FGOutput::NoFG;
     // This should be set to a non-None value only if all other requirements are met and nvngx can be used
     FGNvngxReplacement activeFgNvngx = FGNvngxReplacement::None;

@@ -27,6 +27,7 @@
 #include "inputs/FG/FSR3_Dx12_FG.h"
 
 #include <fsr4/FSR4ModelSelection.h>
+#include <framegen/dlssg/AmpereMfgLoader.h>
 
 #include <hooks/Dxgi_Hooks.h>
 #include <hooks/D3D11_Hooks.h>
@@ -1764,6 +1765,9 @@ DWORD WINAPI getGpuInfo(LPVOID hModuleVoid)
     if (hModuleVoid)
         IdentifyGpu::updateD3d12Capabilities();
 
+    // SM75/SM86 setup must happen after DLL_PROCESS_ATTACH and GPU enumeration.
+    AmpereMfgLoader::TrySetup();
+
     return 0;
 }
 
@@ -1868,7 +1872,24 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         Config::Instance()->CheckForUpdate.set_volatile_value(false);
 #endif
 
-        // Initial state of FG
+        // Initial state of FG. SM75/SM86 companion mode leaves the game's FG stack in control.
+        State::Instance().externalFrameGeneration =
+            Config::Instance()->ExternalFrameGeneration.value_or_default() ||
+            Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default();
+
+        if (State::Instance().externalFrameGeneration)
+        {
+            auto* cfg = Config::Instance();
+            cfg->FGInput.set_volatile_value(FGInput::NoFG);
+            cfg->FGOutput.set_volatile_value(FGOutput::NoFG);
+            cfg->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+            cfg->FGEnabled.set_volatile_value(false);
+            cfg->ForceXeLL.set_volatile_value(false);
+            cfg->UseFakenvapi.set_volatile_value(false);
+            cfg->FN_ForceReflex.set_volatile_value(ForceReflex::InGame);
+            LOG_INFO("External frame generation: game/SM86 companion owns FG; NR/SR remain available");
+        }
+
         State::Instance().activeFgInput = Config::Instance()->FGInput.value_or_default();
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
         State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();

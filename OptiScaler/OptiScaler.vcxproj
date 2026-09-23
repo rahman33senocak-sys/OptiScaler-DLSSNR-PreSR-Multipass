@@ -347,6 +347,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="dlssnr\DlssNr_Exposure.h" />
     <ClInclude Include="gpu_time\Vitals.h" />
     <ClInclude Include="framegen\dlssg\MfgUnlock.h" />
+    <ClInclude Include="framegen\dlssg\AmpereMfgLoader.h" />
     <ClInclude Include="framegen\dlssg\Kcd2Hdr.h" />
     <ClInclude Include="framegen\dlssg\MfgUnlockFlip.h" />
     <ClInclude Include="framegen\dlssg\MfgUnlockMethod.h" />
@@ -655,6 +656,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="framegen\dlssg\MfgUnlock.cpp">
       <ExcludedFromBuild Condition="'$(OptiScalerRtx40Mfg)'!='true'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="framegen\dlssg\AmpereMfgLoader.cpp" />
     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
     <ClCompile Include="framegen\IFGFeature.cpp" />
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
