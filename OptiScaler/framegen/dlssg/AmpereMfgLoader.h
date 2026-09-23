@@ -6,24 +6,45 @@
 
 namespace AmpereMfgLoader
 {
+enum class LoadMode : uint32_t
+{
+    None,
+    NativeUnlock,
+    Provider,
+};
+
 struct Status
 {
-    bool Enabled = false;     // Config says to use it
-    bool DllFound = false;    // dlssg_sm86.dll found in OptiScaler/dlssg_sm86/
-    bool IniWritten = false;  // dlssg_sm86.ini generated and written
-    bool DllLoaded = false;   // LoadLibrary succeeded
-    std::string ErrorMessage; // Human-readable error if anything failed
+    bool Enabled = false;
+    bool PluginFound = false;
+    bool IniWritten = false;
+    bool PluginLoaded = false;
+    LoadMode RequestedMode = LoadMode::None;
+    LoadMode LoadedMode = LoadMode::None;
+    std::string ErrorMessage;
 };
 
 Status LastStatus();
 
-/// Called after DLL initialization, once GPU/environment information is available.
-void TrySetup();
+/// Early/native mode: loads SM75/SM86 before the game's Streamline capability decision.
+/// This is the meaning of [DLSSG] AmpereMfgUnlock=true.
+bool TrySetupNativeUnlock();
+
+/// Provider mode: loads SM75/SM86 only for OptiScaler's own DLSSG output.
+/// In this mode SpoofArchToGame=0 so the SM86 proxy itself does not globally advertise RTX 50 to the game.
+bool TrySetupProvider();
+
+/// True when the bundled/installed SM86 ASI (or a legacy development DLL) can be found.
+bool IsPluginAvailable();
+
+const char* ModeName(LoadMode mode);
 
 /// Formats the pinned dlssg_for_sm86 0.3.5 configuration.
 /// 310.9 supports up to five generated frames (6X) when the game's Streamline plugin also supports it.
+/// native/global mode writes SpoofArchToGame=1; OptiScaler provider mode writes 0.
 inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg, int hwBilinear = 0,
-                                    const std::string& router = "SM86", int logLevel = 1)
+                                    const std::string& router = "SM86", int logLevel = 1,
+                                    bool spoofArchToGame = true)
 {
     if (maxFrames <= 0 || maxFrames > 5)
         maxFrames = 3;
@@ -50,7 +71,8 @@ inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg,
     ss << "Preset=Auto\n";
     ss << "Router=" << validRouter << "\n";
     ss << "KernelImage=" << validKernel << "\n";
-    ss << "HardwareBilinear=" << validHwBilinear << "\n\n";
+    ss << "HardwareBilinear=" << validHwBilinear << "\n";
+    ss << "SpoofArchToGame=" << (spoofArchToGame ? 1 : 0) << "\n\n";
     ss << "[Logging]\n";
     ss << "Level=" << validLogLevel << "\n";
     ss << "Directory=dlssg_sm86\\logs\n\n";
@@ -61,13 +83,9 @@ inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg,
     return ss.str();
 }
 
-/// Checks if an architecture ID represents Turing (SM75).
 inline bool IsTuringArch(uint32_t archId) { return (archId == 0x00000160) || ((archId & 0xFFF0) == 0x0160); }
-
-/// Checks if an architecture ID represents Ampere (SM86).
 inline bool IsAmpereArch(uint32_t archId) { return (archId == 0x00000170) || ((archId & 0xFFF0) == 0x0170); }
 
-/// Resolves router string ("SM75" or "SM86") based on architecture ID and GPU name.
 inline std::string ResolveRouter(uint32_t archId, const std::string& gpuName = "")
 {
     if (IsTuringArch(archId))
@@ -75,7 +93,6 @@ inline std::string ResolveRouter(uint32_t archId, const std::string& gpuName = "
     if (IsAmpereArch(archId))
         return "SM86";
 
-    // Fallback: name matching
     if (!gpuName.empty())
     {
         if (gpuName.find("RTX 20") != std::string::npos || gpuName.find("GTX 16") != std::string::npos ||
@@ -89,13 +106,8 @@ inline std::string ResolveRouter(uint32_t archId, const std::string& gpuName = "
     return "SM86";
 }
 
-/// Resolves router string ("SM75" or "SM86") for current hardware.
 std::string ResolveRouter();
-
-/// Generates dlssg_sm86.ini content from OptiScaler config values.
-std::string GenerateIniContent();
-
-/// Resolves optimal kernel image format for current hardware/environment when Auto is requested.
+std::string GenerateIniContent(LoadMode mode = LoadMode::NativeUnlock);
 std::string ResolveAutoKernelImage();
 
 inline std::string ResolveAutoKernelImage(uint32_t archId, const std::string& name, bool onLinux)
