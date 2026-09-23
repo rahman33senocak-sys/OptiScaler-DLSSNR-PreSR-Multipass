@@ -719,9 +719,10 @@ class Config
     CustomOptional<std::string, NoDefault> FGDLSSGAdaTemporalFix; // Auto / Retarget / Ptx
     CustomOptional<bool> FGDLSSGAdaFlipMeteringPatch { false };   // pin sl.dlss_g to software frame pacing
 #endif
-    // RTX 20/30 SM75/SM86 companion MFG path.
+    // SM86/SM75 runtime: Unlock=true loads it early for the native game path; FGNvngxReplacement=SM86
+    // loads it on demand for OptiScaler's DLSSG output with the proxy's game-architecture spoof disabled.
     CustomOptional<bool> FGDLSSGAmpereMfgUnlock { false };
-    CustomOptional<int> FGDLSSGAmpereMfgMaxFrames { 3 };                // 0..5, up to 6X on 310.9 when game supports it
+    CustomOptional<int> FGDLSSGAmpereMfgMaxFrames { 3 };                // 0=runtime default, 1=2X ... 5=6X
     CustomOptional<std::string, NoDefault> FGDLSSGAmpereMfgKernelImage; // Auto / PTX / Cubin
     CustomOptional<bool> FGDLSSGAmpereMfgHardwareBilinear { false };
     CustomOptional<int> FGDLSSGInterpolationCount { 1 }; // For Opti's own SL instance
