@@ -3390,11 +3390,11 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                                    AmpereMfgLoader::ResolveRouter().c_str());
 
             int maxFrames = config->FGDLSSGAmpereMfgMaxFrames.value_or_default();
-            const char* frameLabels[] = { "Default", "1 (2X)", "2 (3X)", "3 (4X)" };
-            const char* frameLabel = maxFrames >= 0 && maxFrames <= 3 ? frameLabels[maxFrames] : "Default";
-            if (ImGui::SliderInt("Max Generated Frames##sm86", &maxFrames, 0, 3, frameLabel))
+            const char* frameLabels[] = { "Default", "1 (2X)", "2 (3X)", "3 (4X)", "4 (5X)", "5 (6X)" };
+            const char* frameLabel = maxFrames >= 0 && maxFrames <= 5 ? frameLabels[maxFrames] : "Default";
+            if (ImGui::SliderInt("Max Generated Frames##sm86", &maxFrames, 0, 5, frameLabel))
                 config->FGDLSSGAmpereMfgMaxFrames = maxFrames;
-            ShowHelpMarker("Maximum generated frames advertised by the SM75/SM86 companion. Save and restart.");
+            ShowHelpMarker("0 = companion default. 5 enables the 6X ceiling of the bundled 310.9 runtime when the game's Streamline plugin supports 6X/Dynamic MFG. Save and restart.");
 
             const std::string resolvedAuto = AmpereMfgLoader::ResolveAutoKernelImage();
             const std::string autoLabel = resolvedAuto != "Auto" ? "Auto (" + resolvedAuto + ")" : "Auto";

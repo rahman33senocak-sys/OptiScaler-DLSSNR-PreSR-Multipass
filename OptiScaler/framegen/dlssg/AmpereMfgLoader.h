@@ -20,12 +20,12 @@ Status LastStatus();
 /// Called after DLL initialization, once GPU/environment information is available.
 void TrySetup();
 
-/// Formats dlssg_sm86.ini content with Native 0.2.3 specification and strict clamping.
+/// Formats the pinned dlssg_for_sm86 0.3.5 configuration.
+/// 310.9 supports up to five generated frames (6X) when the game's Streamline plugin also supports it.
 inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg, int hwBilinear = 0,
                                     const std::string& router = "SM86", int logLevel = 1)
 {
-    // Native 0.2.3 strictly requires: MaxGeneratedFrames must be 1, 2 or 3
-    if (maxFrames <= 0 || maxFrames > 3)
+    if (maxFrames <= 0 || maxFrames > 5)
         maxFrames = 3;
 
     std::string validKernel = kernelImg;
@@ -40,15 +40,23 @@ inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg,
     int validLogLevel = (logLevel >= 0 && logLevel <= 3) ? logLevel : 1;
 
     std::ostringstream ss;
-    ss << "; Native 0.2.3. Restart the game after changing this file.\n";
+    ss << "; dlssg_for_sm86 0.3.5 / bundled 310.9 runtime. Restart after changes.\n";
+    ss << "[General]\n";
+    ss << "Enabled=1\n\n";
+    ss << "[FrameGeneration]\n";
+    ss << "Optimized=1\n";
+    ss << "MaxGeneratedFrames=" << maxFrames << "\n\n";
     ss << "[Compatibility]\n";
+    ss << "Preset=Auto\n";
     ss << "Router=" << validRouter << "\n";
     ss << "KernelImage=" << validKernel << "\n";
     ss << "HardwareBilinear=" << validHwBilinear << "\n\n";
-    ss << "[FrameGeneration]\n";
-    ss << "MaxGeneratedFrames=" << maxFrames << "\n\n";
     ss << "[Logging]\n";
     ss << "Level=" << validLogLevel << "\n";
+    ss << "Directory=dlssg_sm86\\logs\n\n";
+    ss << "[Runtime]\n";
+    ss << "Mode=Bundled\n";
+    ss << "CacheDirectory=\n";
 
     return ss.str();
 }

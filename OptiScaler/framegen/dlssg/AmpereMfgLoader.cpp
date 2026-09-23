@@ -69,6 +69,8 @@ std::string GenerateIniContent()
     int logLevel = 1;
 
     LOG_INFO("AmpereMfgLoader: Router selected: {} for GPU: {}", router, IdentifyGpu::getPrimaryGpu().name);
+    LOG_INFO("AmpereMfgLoader: SM86 0.3.5 ceiling = {} generated frames ({}X total), Optimized=1 bit-identical",
+             maxFrames, maxFrames + 1);
 
     return FormatIniContent(maxFrames, kernelImg, hwBilinear, router, logLevel);
 }

@@ -1874,7 +1874,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         // Initial state of FG. SM75/SM86 companion mode leaves the game's FG stack in control.
         State::Instance().externalFrameGeneration =
-            Config::Instance()->ExternalFrameGeneration.value_or_default() ||
             Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default();
 
         if (State::Instance().externalFrameGeneration)

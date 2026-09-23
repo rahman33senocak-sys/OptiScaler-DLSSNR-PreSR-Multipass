@@ -68,7 +68,8 @@ bool Config::Reload(std::filesystem::path iniPath)
         // Frame Generation
         {
             FGEnabled.set_from_config(readBool("FrameGen", "Enabled"));
-            ExternalFrameGeneration.set_from_config(readBool("FrameGen", "External"));
+            // Derived only from AmpereMfgUnlock below. A stale INI value must never disable native DLSSG.
+            ExternalFrameGeneration.set_from_config(false);
             FGDebugView.set_from_config(readBool("FrameGen", "DebugView"));
 
             if (auto FGInputString = readString("FrameGen", "FGInput"); FGInputString.has_value())
@@ -246,7 +247,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGDLSSGAmpereMfgUnlock.set_from_config(readBool("DLSSG", "AmpereMfgUnlock"));
             FGDLSSGAmpereMfgMaxFrames.set_from_config(readInt("DLSSG", "AmpereMfgMaxFrames"));
             if (FGDLSSGAmpereMfgMaxFrames.has_value() &&
-                (FGDLSSGAmpereMfgMaxFrames.value() < 0 || FGDLSSGAmpereMfgMaxFrames.value() > 3))
+                (FGDLSSGAmpereMfgMaxFrames.value() < 0 || FGDLSSGAmpereMfgMaxFrames.value() > 5))
                 FGDLSSGAmpereMfgMaxFrames.reset();
 
             if (auto ampereKernel = readString("DLSSG", "AmpereMfgKernelImage"); ampereKernel.has_value())
@@ -260,8 +261,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             }
             FGDLSSGAmpereMfgHardwareBilinear.set_from_config(readBool("DLSSG", "AmpereMfgHardwareBilinear"));
 
-            if (FGDLSSGAmpereMfgUnlock.value_or_default())
-                ExternalFrameGeneration.set_from_config(true);
+            ExternalFrameGeneration.set_from_config(FGDLSSGAmpereMfgUnlock.value_or_default());
 
             FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
             if (FGDLSSGInterpolationCount.has_value() &&
@@ -1002,8 +1002,7 @@ bool Config::SaveIni(std::filesystem::path destination)
     {
         ini.SetValue("FrameGen", "Enabled", GetBoolValue(Instance()->FGEnabled.value_for_config()).c_str());
         const bool ampereUnlock = Instance()->FGDLSSGAmpereMfgUnlock.value_for_config_or(false);
-        ini.SetValue("FrameGen", "External",
-                     GetBoolValue(Instance()->ExternalFrameGeneration.value_for_config_or(false) || ampereUnlock).c_str());
+        ini.SetValue("FrameGen", "External", GetBoolValue(ampereUnlock).c_str());
         ini.SetValue("FrameGen", "DebugView", GetBoolValue(Instance()->FGDebugView.value_for_config()).c_str());
         std::string FGInputString = "auto";
         if (auto FGInputHeld = Instance()->FGInput.value_for_config(); FGInputHeld.has_value())
