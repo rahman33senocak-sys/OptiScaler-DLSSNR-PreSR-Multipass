@@ -8,6 +8,7 @@
 #include <proxies/Ntdll_Proxy.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <hooks/Streamline_Hooks.h>
+#include <framegen/dlssg/AmpereMfgLoader.h>
 
 #include <sl.h>
 #include <sl_pcl.h>
@@ -68,6 +69,16 @@ class StreamlineProxy
     {
         if (_dll != nullptr)
             return true;
+
+        // SM86 provider mode must install its DLSSG proxy before the local Streamline stack loads
+        // nvngx_dlssg.dll. Native/global unlock mode is already loaded earlier at startup.
+        if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
+            State::Instance().activeFgNvngx == FGNvngxReplacement::SM86 &&
+            !AmpereMfgLoader::TrySetupProvider())
+        {
+            LOG_ERROR("StreamlineProxy: SM86 DLSSG provider could not be initialized");
+            return false;
+        }
 
         auto owner = State::GetOwner();
         if (State::Instance().activeFgOutput == FGOutput::DLSSG &&
