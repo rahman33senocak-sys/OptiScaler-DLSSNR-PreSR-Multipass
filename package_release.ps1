@@ -115,9 +115,13 @@ if ($IncludeAmpereMfg) {
         throw "SM75/SM86 MFG binary not found at $sm86Dll"
     }
 
-    $sm86Dest = Join-Path $stage 'OptiScaler/dlssg_sm86'
+    $sm86Dest = Join-Path $stage 'OptiScaler/plugins'
     New-Item -ItemType Directory -Path $sm86Dest -Force | Out-Null
-    Copy-Item -LiteralPath $sm86Dll -Destination (Join-Path $sm86Dest 'dlssg_sm86.dll')
+
+    # dlssg_for_sm86 is a proxy DLL, but OptiScaler can load it as an ASI plugin. The managed
+    # AmpereMfgLoader controls whether it is loaded early (native/global unlock) or on demand
+    # (OptiScaler DLSSG provider), so the generic ASI loader intentionally skips this filename.
+    Copy-Item -LiteralPath $sm86Dll -Destination (Join-Path $sm86Dest 'dlssg_sm86.asi')
 
     foreach ($extra in @('dlssg_sm86.ini', 'THIRD_PARTY_NOTICES.txt', 'LICENSE')) {
         $source = Join-Path $sm86Src $extra
@@ -125,7 +129,7 @@ if ($IncludeAmpereMfg) {
             Copy-Item -LiteralPath $source -Destination (Join-Path $sm86Dest $extra)
         }
     }
-    Write-Output 'Bundled pinned RTX 20/30 SM75/SM86 MFG companion.'
+    Write-Output 'Bundled pinned RTX 20/30 SM75/SM86 runtime as OptiScaler/plugins/dlssg_sm86.asi.'
 }
 
 [IO.File]::WriteAllText((Join-Path $stage '!! EXTRACT ALL FILES TO GAME FOLDER !!'), '')
