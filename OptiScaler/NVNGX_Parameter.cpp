@@ -809,9 +809,20 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
         InParams->Set(NVSDK_NGX_Parameter_FrameInterpolation_NeedsUpdatedDriver, 0);
         InParams->Set(NVSDK_NGX_Parameter_FrameInterpolation_FeatureInitResult, 1);
 
-        // Streamline handle the max interpolated frame count
-        int countMax =
-            State::Instance().activeFgNvngx != FGNvngxReplacement::None ? Nvngx_FG::getMaxFakeFramesCount() : 1;
+        // Streamline handles the actual requested count. SM86 is a real NVIDIA DLSSG provider,
+        // not an IFGNvngx replacement, so never query Nvngx_FG for its ceiling.
+        int countMax = 1;
+        const auto fgProvider = State::Instance().activeFgNvngx;
+        if (fgProvider == FGNvngxReplacement::SM86)
+        {
+            const int configured = Config::Instance()->FGDLSSGAmpereMfgMaxFrames.value_or_default();
+            // dlssg_for_sm86 0.3.5 factory default is 3 generated frames (4X) when 0 is requested.
+            countMax = configured == 0 ? 3 : std::clamp(configured, 1, 5);
+        }
+        else if (fgProvider != FGNvngxReplacement::None)
+        {
+            countMax = Nvngx_FG::getMaxFakeFramesCount();
+        }
         InParams->Set("DLSSG.MultiFrameCountMax", countMax);
 
         if (State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
