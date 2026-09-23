@@ -39,6 +39,10 @@ IFGNvngx* Nvngx_FG::getProvider()
         _provider = std::make_unique<Nvngx_Combo>();
         break;
 
+    case FGNvngxReplacement::SM86:
+        // SM86 is handled by the DLSSG output path/AmpereMfgLoader, not IFGNvngx.
+        return nullptr;
+
     case FGNvngxReplacement::None:
     default:
         return nullptr;
@@ -66,6 +70,8 @@ IFGNvngx* Nvngx_FG::getProvider()
                 return "Nukems";
             case FGNvngxReplacement::Combo:
                 return "Combo";
+            case FGNvngxReplacement::SM86:
+                return "SM86";
             case FGNvngxReplacement::None:
             default:
                 return "???";
@@ -93,6 +99,7 @@ IFGNvngx* Nvngx_FG::getProvider()
                 candidate = std::make_unique<Nvngx_Nukems>();
                 break;
 
+            case FGNvngxReplacement::SM86:
             case FGNvngxReplacement::None:
             default:
                 continue;
