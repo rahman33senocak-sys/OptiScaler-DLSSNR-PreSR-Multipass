@@ -26,9 +26,10 @@ jobs:
         shell: cmd
         run: |
           if not exist dist mkdir dist
-          cl /nologo /std:c++17 /O2 /MT /EHsc /LD tools\reshade-sm86-loader\SM86Loader.cpp /link /OUT:dist\SM86Loader.addon64
-          copy tools\reshade-sm86-loader\README.md dist\README.md
-          copy tools\reshade-sm86-loader\dlssg_sm86.example.ini dist\dlssg_sm86.example.ini
+          cl /nologo /std:c++17 /O2 /MT /EHsc /LD tools\reshade-sm86-loader\SM86Loader.cpp /link /OUT:dist\SM86Loader.addon64 || exit /b 1
+          if not exist dist\SM86Loader.addon64 exit /b 1
+          copy tools\reshade-sm86-loader\README.md dist\README.md || exit /b 1
+          copy tools\reshade-sm86-loader\dlssg_sm86.example.ini dist\dlssg_sm86.example.ini || exit /b 1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
