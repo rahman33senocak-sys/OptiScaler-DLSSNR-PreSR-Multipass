@@ -780,7 +780,8 @@ void StreamlineHooks::spoofArch(uint32_t currentArch, sl::Feature feature, Syste
     // Don't change arch for DLSSG with ada and above
     else if (feature == sl::kFeatureDLSS_G)
     {
-        if (State::Instance().activeFgNvngx != FGNvngxReplacement::None)
+        if (State::Instance().activeFgNvngx != FGNvngxReplacement::None &&
+            State::Instance().activeFgNvngx != FGNvngxReplacement::SM86)
         {
             if (!Nvngx_FG::isDx12Available() && !Nvngx_FG::isVulkanAvailable())
                 return setArch(0);
@@ -1811,8 +1812,6 @@ void StreamlineHooks::updateDlssgOptions()
 void StreamlineHooks::applyMenuDlssgInterlock(sl::DLSSGOptions& options, bool potentiallyActive)
 {
     auto& state = State::Instance();
-    if (state.externalFrameGeneration)
-        return;
     if (state.swapchainApi != API::Vulkan && !state.menuOverlayIsVulkan)
         return;
     if (potentiallyActive && !MenuOverlayBase::IsVisible())
@@ -1890,8 +1889,6 @@ void StreamlineHooks::unhookInterposer()
 // Call it just after sl.interposer's load or if sl.interposer is already loaded
 void StreamlineHooks::hookInterposer(HMODULE slInterposer)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slInterposer)
@@ -2113,8 +2110,6 @@ void StreamlineHooks::unhookDlss()
 
 void StreamlineHooks::hookDlss(HMODULE slDlss)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slDlss)
@@ -2168,8 +2163,6 @@ void StreamlineHooks::unhookDlssg()
 
 void StreamlineHooks::hookDlssg(HMODULE slDlssg)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slDlssg)
@@ -2226,8 +2219,6 @@ void StreamlineHooks::unhookLocalDlssg()
 
 void StreamlineHooks::hookLocalDlssg(HMODULE slDlssg)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slDlssg)
@@ -2279,8 +2270,6 @@ void StreamlineHooks::unhookReflex()
 
 void StreamlineHooks::hookReflex(HMODULE slReflex)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slReflex)
@@ -2337,8 +2326,6 @@ void StreamlineHooks::unhookPcl()
 
 void StreamlineHooks::hookPcl(HMODULE slPcl)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slPcl)
@@ -2397,8 +2384,6 @@ void StreamlineHooks::unhookCommon()
 
 void StreamlineHooks::hookCommon(HMODULE slCommon)
 {
-    if (State::Instance().externalFrameGeneration)
-        return;
     LOG_FUNC();
 
     if (!slCommon)
