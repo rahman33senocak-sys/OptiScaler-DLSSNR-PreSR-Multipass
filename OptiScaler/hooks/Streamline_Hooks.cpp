@@ -1001,7 +1001,11 @@ bool StreamlineHooks::hklocal_dlssg_slOnPluginLoad(sl::param::IParameters* param
     // TODO: do it better than "static" and hoping for the best
     static std::string config;
 
-    bool shouldSpoofArch = Config::Instance()->StreamlineSpoofing.value_or_default();
+    // Local OptiScaler DLSSG must see a supported NVIDIA architecture when SM86 is selected.
+    // This does not enable the game's global/native architecture redirect; provider mode keeps
+    // dlssg_for_sm86 SpoofArchToGame=0 and scopes this spoof to the local Streamline instance.
+    bool shouldSpoofArch = Config::Instance()->StreamlineSpoofing.value_or_default() ||
+                           State::Instance().activeFgNvngx == FGNvngxReplacement::SM86;
 
     uint32_t currentArch = 0;
     SystemCaps* localSystemCaps = nullptr;
