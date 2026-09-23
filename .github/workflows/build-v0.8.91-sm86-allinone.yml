@@ -1,0 +1,53 @@
+name: Build v0.8.91 SM86 All-in-One
+
+on:
+  push:
+    branches:
+      - dev/v0.8.91-sm86-allinone
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Fetch pinned SM75/SM86 MFG companion
+        shell: powershell
+        run: |
+          git init dlssg_for_sm86
+          git -C dlssg_for_sm86 remote add origin https://github.com/sdli1995/dlssg_for_sm86.git
+          git -C dlssg_for_sm86 fetch --depth 1 origin 1fb9ecbd980b1f191c092dce1b072b3cb9bd8984
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch pinned Native 0.2.3 runtime' }
+          git -C dlssg_for_sm86 checkout --detach FETCH_HEAD
+          if (-not (Test-Path 'dlssg_for_sm86\version.dll')) { throw 'Pinned SM86 runtime has no version.dll' }
+
+      - name: Build OptiScaler with RTX40 MFG
+        shell: powershell
+        run: |
+          MSBuild OptiScaler.sln /p:Configuration=Release /p:Platform=x64 /p:OptiScalerRtx40Mfg=true /p:PostBuildEventUseInBuild=false /m
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package DLSS5 + RTX40 + SM75/SM86
+        shell: powershell
+        run: |
+          .\package_release.ps1 -Version 'v0.8.91-sm86-allinone' -SkipBuild -EnableRtx40Mfg -IncludeAmpereMfg -AcceptAmpereMfgLicenses
+
+      - name: Upload ready ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: OptiScaler-NR-v0.8.91-sm86-allinone
+          path: release/*.zip
+          if-no-files-found: error
+          retention-days: 14

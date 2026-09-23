@@ -4,11 +4,17 @@ param(
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
     [string]$Version = 'nr-dev',
     [switch]$SkipBuild,
-    [switch]$EnableRtx40Mfg
+    [switch]$EnableRtx40Mfg,
+    [switch]$IncludeAmpereMfg,
+    [switch]$AcceptAmpereMfgLicenses
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSCommandPath
+
+if ($IncludeAmpereMfg -and -not $AcceptAmpereMfgLicenses) {
+    throw 'Bundling RTX 20/30 SM75/SM86 MFG binaries requires -AcceptAmpereMfgLicenses.'
+}
 $stage = Join-Path $root "release/$Version"
 $zip = Join-Path $root "release/OptiScaler-NR-$Version.zip"
 if ((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $zip)) {
@@ -85,7 +91,7 @@ foreach ($entry in $files.GetEnumerator()) {
 
 $ini = Get-Content -LiteralPath $files['OptiScaler.ini'] -Raw
 if ($ini -match '(?mi)^Enabled=true\s*$') { throw 'A feature is enabled in the default INI.' }
-foreach ($key in @('FinishedPicture', 'DeferredDLSS', 'UnlockPasses', 'AdaMfgUnlock', 'AdaFlipMeteringPatch', 'SpatialCompression')) {
+foreach ($key in @('FinishedPicture', 'DeferredDLSS', 'UnlockPasses', 'AdaMfgUnlock', 'AdaFlipMeteringPatch', 'AmpereMfgUnlock', 'SpatialCompression')) {
     if ($ini -match "(?mi)^$key=true\s*$") { throw "Experimental option $key is enabled in the default INI." }
 }
 if ($ini -notmatch '(?mi)^TargetProcessName=auto\s*$') { throw 'The INI contains a game-specific process filter.' }
@@ -102,6 +108,26 @@ if (-not $EnableRtx40Mfg) {
     $ini = $ini -replace '(?ms)^; Frame timing fix for the extra frames.*?^AdaFlipMeteringPatch=[^\r\n]*\r?\n', ''
     [IO.File]::WriteAllText((Join-Path $stage 'OptiScaler.ini'), $ini, [Text.UTF8Encoding]::new($false))
 }
+if ($IncludeAmpereMfg) {
+    $sm86Src = Join-Path $root 'dlssg_for_sm86'
+    $sm86Dll = Join-Path $sm86Src 'version.dll'
+    if (-not (Test-Path -LiteralPath $sm86Dll -PathType Leaf)) {
+        throw "SM75/SM86 MFG binary not found at $sm86Dll"
+    }
+
+    $sm86Dest = Join-Path $stage 'OptiScaler/dlssg_sm86'
+    New-Item -ItemType Directory -Path $sm86Dest -Force | Out-Null
+    Copy-Item -LiteralPath $sm86Dll -Destination (Join-Path $sm86Dest 'dlssg_sm86.dll')
+
+    foreach ($extra in @('dlssg_sm86.ini', 'THIRD_PARTY_NOTICES.txt', 'LICENSE')) {
+        $source = Join-Path $sm86Src $extra
+        if (Test-Path -LiteralPath $source -PathType Leaf) {
+            Copy-Item -LiteralPath $source -Destination (Join-Path $sm86Dest $extra)
+        }
+    }
+    Write-Output 'Bundled pinned RTX 20/30 SM75/SM86 MFG companion.'
+}
+
 [IO.File]::WriteAllText((Join-Path $stage '!! EXTRACT ALL FILES TO GAME FOLDER !!'), '')
 
 $checksums = Get-ChildItem -LiteralPath $stage -File -Recurse | Sort-Object FullName | ForEach-Object {
