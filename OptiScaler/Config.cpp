@@ -265,14 +265,14 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
             if (FGDLSSGInterpolationCount.has_value() &&
-                (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 6))
+                (FGDLSSGInterpolationCount.value() < 1 || FGDLSSGInterpolationCount.value() > 5))
                 FGDLSSGInterpolationCount.reset();
 
             FGDLSSGUseGamesReflexMarkers.set_from_config(readBool("DLSSG", "UseGamesReflexMarkers"));
 
             FGDLSSGOverrideInterpolationCount.set_from_config(readInt("DLSSG", "OverrideInterpolationCount"));
             if (FGDLSSGOverrideInterpolationCount.has_value() &&
-                (FGDLSSGOverrideInterpolationCount.value() < 0 || FGDLSSGOverrideInterpolationCount.value() > 6))
+                (FGDLSSGOverrideInterpolationCount.value() < 0 || FGDLSSGOverrideInterpolationCount.value() > 5))
                 FGDLSSGOverrideInterpolationCount.reset();
 
             FGDLSSGFramerateTargetDMFG.set_from_config(readFloat("DLSSG", "FramerateTargetDMFG"));
