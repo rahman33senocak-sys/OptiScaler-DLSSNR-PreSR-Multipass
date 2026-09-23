@@ -239,7 +239,8 @@ void LoadAsiPlugins()
             // collapse those two modes into an unconditional early process-wide load.
             if (fileName == L"dlssg_sm86.asi")
             {
-                LOG_DEBUG("Skipping generic ASI load for {}; managed by AmpereMfgLoader", entry.path().wstring());
+                LOG_DEBUG("Skipping generic ASI load for {}; managed by AmpereMfgLoader",
+                          wstring_to_string(entry.path().wstring()));
                 continue;
             }
 
