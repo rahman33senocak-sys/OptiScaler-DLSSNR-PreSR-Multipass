@@ -2,6 +2,7 @@
 
 #include "DLSSG_Dx12.h"
 #include "Kcd2Hdr.h"
+#include "AmpereMfgLoader.h"
 #if defined(OPTISCALER_RTX40_MFG)
 #include "MfgUnlock.h"
 #endif
@@ -24,6 +25,13 @@ using namespace DirectX;
 
 feature_version DLSSG_Dx12::Version()
 {
+    // Do not load SM86 merely to query a version. Provider mode is activated only when
+    // OptiScaler actually initializes its DLSSG output, preserving Unlock=OFF semantics.
+    if (State::Instance().activeFgNvngx == FGNvngxReplacement::SM86 &&
+        !Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
+        !AmpereMfgLoader::LastStatus().PluginLoaded)
+        return { 0, 0, 0 };
+
     if (StreamlineProxy::LoadStreamline())
     {
         auto ver = StreamlineProxy::Version();
