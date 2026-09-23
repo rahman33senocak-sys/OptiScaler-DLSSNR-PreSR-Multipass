@@ -3396,8 +3396,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                 config->FGDLSSGAmpereMfgMaxFrames = maxFrames;
             ShowHelpMarker("0 = companion default. 5 enables the 6X ceiling of the bundled 310.9 runtime when the game's Streamline plugin supports 6X/Dynamic MFG. Save and restart.");
 
-            const std::string resolvedAuto = AmpereMfgLoader::ResolveAutoKernelImage();
-            const std::string autoLabel = resolvedAuto != "Auto" ? "Auto (" + resolvedAuto + ")" : "Auto";
+            const std::string autoLabel = "Auto (0.3.5 runtime)";
             const char* kernelOptions[] = { autoLabel.c_str(), "PTX", "Cubin" };
             const std::string currentKernel = config->FGDLSSGAmpereMfgKernelImage.value_or("Auto");
             int kernelIndex = currentKernel == "PTX" ? 1 : currentKernel == "Cubin" ? 2 : 0;
