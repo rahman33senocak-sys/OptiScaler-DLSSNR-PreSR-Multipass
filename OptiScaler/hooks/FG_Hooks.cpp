@@ -6,6 +6,7 @@
 #include <framegen/ffx/FSRFG_Dx12.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <framegen/dlssg/DLSSG_Dx12.h>
+#include <framegen/dlssg/AmpereMfgLoader.h>
 
 #include <inputs/FG/FSR3_Dx12_FG.h>
 #include <inputs/FG/FfxApi_Dx12_FG.h>
@@ -103,17 +104,28 @@ static bool CheckForFGStatus()
         Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
     }
-    else if (State::Instance().activeFgOutput == FGOutput::DLSSG && !StreamlineProxy::LoadStreamline())
+    else if (State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
-        ImGui::InsertNotification(
-            { ImGuiToastType::Error, 20000, "Can't init DLSSG Output\nAre you missing the streamline folder?" });
+        bool providerReady = true;
+        if (State::Instance().activeFgNvngx == FGNvngxReplacement::SM86)
+            providerReady = AmpereMfgLoader::TrySetupProvider();
 
-        LOG_DEBUG("Can't init StreamlineProxy, disabling FGOutput");
-        Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
-        State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
+        if (!providerReady || !StreamlineProxy::LoadStreamline())
+        {
+            const auto status = AmpereMfgLoader::LastStatus();
+            const std::string reason =
+                !providerReady && !status.ErrorMessage.empty() ? status.ErrorMessage : "Are you missing the streamline folder?";
 
-        Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
-        State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 20000, std::format("Can't init DLSSG Output\n{}", reason).c_str() });
+
+            LOG_DEBUG("Can't init DLSSG/SM86 provider, disabling FGOutput");
+            Config::Instance()->FGOutput.set_volatile_value(FGOutput::NoFG);
+            State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
+
+            Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+            State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
+        }
     }
 
     if (State::Instance().activeFgOutput == FGOutput::NoFG)
