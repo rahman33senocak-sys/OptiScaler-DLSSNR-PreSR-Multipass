@@ -234,6 +234,15 @@ void LoadAsiPlugins()
             std::transform(fileName.begin(), fileName.end(), fileName.begin(),
                            [](wchar_t c) { return std::towlower(c); });
 
+            // dlssg_sm86.asi has load-order semantics: early load = native/global unlock;
+            // on-demand load = OptiScaler-only DLSSG provider. Never let the generic ASI loader
+            // collapse those two modes into an unconditional early process-wide load.
+            if (fileName == L"dlssg_sm86.asi")
+            {
+                LOG_DEBUG("Skipping generic ASI load for {}; managed by AmpereMfgLoader", entry.path().wstring());
+                continue;
+            }
+
             HMODULE hMod = nullptr;
 
             if (fileName.rfind(L"-loadlate") != std::wstring::npos)
@@ -1765,8 +1774,9 @@ DWORD WINAPI getGpuInfo(LPVOID hModuleVoid)
     if (hModuleVoid)
         IdentifyGpu::updateD3d12Capabilities();
 
-    // SM75/SM86 setup must happen after DLL_PROCESS_ATTACH and GPU enumeration.
-    AmpereMfgLoader::TrySetup();
+    // Native/global SM75/SM86 unlock is intentionally loaded early, after GPU enumeration,
+    // so the game's Streamline capability/plugin decision can see the unlocked DLSSG path.
+    AmpereMfgLoader::TrySetupNativeUnlock();
 
     return 0;
 }
@@ -1872,23 +1882,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         Config::Instance()->CheckForUpdate.set_volatile_value(false);
 #endif
 
-        // Initial state of FG. SM75/SM86 companion mode leaves the game's FG stack in control.
-        State::Instance().externalFrameGeneration =
-            Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default();
-
-        if (State::Instance().externalFrameGeneration)
-        {
-            auto* cfg = Config::Instance();
-            cfg->FGInput.set_volatile_value(FGInput::NoFG);
-            cfg->FGOutput.set_volatile_value(FGOutput::NoFG);
-            cfg->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
-            cfg->FGEnabled.set_volatile_value(false);
-            cfg->ForceXeLL.set_volatile_value(false);
-            cfg->UseFakenvapi.set_volatile_value(false);
-            cfg->FN_ForceReflex.set_volatile_value(ForceReflex::InGame);
-            LOG_INFO("External frame generation: game/SM86 companion owns FG; NR/SR remain available");
-        }
-
+        // SM86 native unlock is a capability layer only. It never owns or rewrites OptiScaler FG routing.
         State::Instance().activeFgInput = Config::Instance()->FGInput.value_or_default();
         State::Instance().activeFgOutput = Config::Instance()->FGOutput.value_or_default();
         State::Instance().activeFgNvngx = Config::Instance()->FGNvngxReplacement.value_or_default();
@@ -1898,7 +1892,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             State::Instance().activeFgNvngx = FGNvngxReplacement::None;
 
         if (State::Instance().activeFgInput == FGInput::NvngxFG)
+        {
             State::Instance().activeFgOutput = FGOutput::NoFG;
+
+            // SM86 is a NVIDIA DLSSG runtime/provider for OptiScaler's DLSSG output, not an IFGNvngx
+            // replacement. NvngxFG input requires Nukems/Enabler/FFX/Combo style providers.
+            if (State::Instance().activeFgNvngx == FGNvngxReplacement::SM86)
+            {
+                LOG_WARN("SM86 provider is only valid with FGOutput=DLSSG; disabling it for FGInput=NvngxFG");
+                Config::Instance()->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::None);
+                State::Instance().activeFgNvngx = FGNvngxReplacement::None;
+            }
+        }
 
         // Init Kernel proxies
         NtdllProxy::Init();
