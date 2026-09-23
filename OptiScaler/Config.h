@@ -624,7 +624,6 @@ class Config
 
     // Frame Generation
     CustomOptional<FGInput> FGInput { FGInput::NoFG };
-    CustomOptional<bool> ExternalFrameGeneration { false }; // startup-only external MFG ownership
     CustomOptional<FGOutput> FGOutput { FGOutput::NoFG };
     // Real/native DLSSG is the default. Replacements are opt-in.
     CustomOptional<FGNvngxReplacement> FGNvngxReplacement { FGNvngxReplacement::None };
