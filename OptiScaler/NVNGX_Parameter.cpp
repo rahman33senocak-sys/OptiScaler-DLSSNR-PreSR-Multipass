@@ -799,8 +799,14 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
         InParams->Set("SuperSamplingDenoising.FeatureInitResult", 0);
     }
 
-    if ((api == API::DX12 || api == API::Vulkan) && (State::Instance().activeFgInput == FGInput::DLSSG ||
-                                                     State::Instance().activeFgNvngx != FGNvngxReplacement::None))
+    const auto activeFgProvider = State::Instance().activeFgNvngx;
+    const bool usesIfgNvngxReplacement =
+        activeFgProvider != FGNvngxReplacement::None && activeFgProvider != FGNvngxReplacement::SM86;
+
+    // SM86 provider mode must not advertise native/game FG capability by itself.
+    // Native capability exposure is controlled by the separate SM86 Unlock setting / DLSSG input path.
+    if ((api == API::DX12 || api == API::Vulkan) &&
+        (State::Instance().activeFgInput == FGInput::DLSSG || usesIfgNvngxReplacement))
     {
         InParams->Set("FrameGeneration.Available", 1);
         InParams->Set("FrameGeneration.NeedsUpdatedDriver", 0);
