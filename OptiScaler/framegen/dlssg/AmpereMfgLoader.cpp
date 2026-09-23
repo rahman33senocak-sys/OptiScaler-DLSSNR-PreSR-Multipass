@@ -131,10 +131,20 @@ bool TrySetupInternal(LoadMode mode)
     // Provider mode is explicitly an RTX 20/30 path and is initialized after a D3D device exists,
     // so validate the physical GPU there. NativeUnlock must load before slInit and therefore does
     // not wait for OptiScaler's asynchronous GPU enumeration; the SM86 runtime performs its own guard.
-    if (mode == LoadMode::Provider && !ValidateGpu())
+    if (mode == LoadMode::Provider)
     {
-        LOG_ERROR("AmpereMfgLoader: {}", s_status.ErrorMessage);
-        return false;
+        if (State::Instance().swapchainApi == API::Vulkan)
+        {
+            s_status.ErrorMessage = "SM86 provider mode is D3D12-only.";
+            LOG_ERROR("AmpereMfgLoader: {}", s_status.ErrorMessage);
+            return false;
+        }
+
+        if (!ValidateGpu())
+        {
+            LOG_ERROR("AmpereMfgLoader: {}", s_status.ErrorMessage);
+            return false;
+        }
     }
 
     const auto pluginPath = FindPluginPath();
