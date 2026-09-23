@@ -1774,10 +1774,6 @@ DWORD WINAPI getGpuInfo(LPVOID hModuleVoid)
     if (hModuleVoid)
         IdentifyGpu::updateD3d12Capabilities();
 
-    // Native/global SM75/SM86 unlock is intentionally loaded early, after GPU enumeration,
-    // so the game's Streamline capability/plugin decision can see the unlocked DLSSG path.
-    AmpereMfgLoader::TrySetupNativeUnlock();
-
     return 0;
 }
 
@@ -1909,6 +1905,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         NtdllProxy::Init();
         KernelBaseProxy::Init();
         Kernel32Proxy::Init();
+
+        // Native/global SM75/SM86 mode must be installed before the game reaches Streamline slInit.
+        // dlssg_for_sm86 0.3.5 performs its architecture gate setup from its own startup path.
+        AmpereMfgLoader::TrySetupNativeUnlock();
 
         // Check for Wine
         spdlog::info("");
