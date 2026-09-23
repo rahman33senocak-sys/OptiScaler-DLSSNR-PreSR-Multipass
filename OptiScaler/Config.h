@@ -721,7 +721,7 @@ class Config
 #endif
     // RTX 20/30 SM75/SM86 companion MFG path.
     CustomOptional<bool> FGDLSSGAmpereMfgUnlock { false };
-    CustomOptional<int> FGDLSSGAmpereMfgMaxFrames { 3 };                // 0..3, up to 4X
+    CustomOptional<int> FGDLSSGAmpereMfgMaxFrames { 3 };                // 0..5, up to 6X on 310.9 when game supports it
     CustomOptional<std::string, NoDefault> FGDLSSGAmpereMfgKernelImage; // Auto / PTX / Cubin
     CustomOptional<bool> FGDLSSGAmpereMfgHardwareBilinear { false };
     CustomOptional<int> FGDLSSGInterpolationCount { 1 }; // For Opti's own SL instance
