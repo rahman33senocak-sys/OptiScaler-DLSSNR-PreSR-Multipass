@@ -54,8 +54,8 @@ inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg,
         validKernel = "Auto";
 
     std::string validRouter = router;
-    if (validRouter != "SM75" && validRouter != "SM86")
-        validRouter = "SM86";
+    if (validRouter != "Auto" && validRouter != "SM75" && validRouter != "SM86")
+        validRouter = "Auto";
 
     int validHwBilinear = (hwBilinear == 1) ? 1 : 0;
     int validLogLevel = (logLevel >= 0 && logLevel <= 3) ? logLevel : 1;
