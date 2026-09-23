@@ -30,7 +30,7 @@ feature_version DLSSG_Dx12::Version()
     if (State::Instance().activeFgNvngx == FGNvngxReplacement::SM86 &&
         !Config::Instance()->FGDLSSGAmpereMfgUnlock.value_or_default() &&
         !AmpereMfgLoader::LastStatus().PluginLoaded)
-        return { 0, 0, 0 };
+        return StreamlineProxy::Version();
 
     if (StreamlineProxy::LoadStreamline())
     {
