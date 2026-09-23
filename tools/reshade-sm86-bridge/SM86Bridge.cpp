@@ -31,7 +31,6 @@ namespace
                 return true;
             }
         }
-
         return false;
     }
 
@@ -79,6 +78,41 @@ namespace
 
         CloseHandle(file);
         OutputDebugStringW(line);
+    }
+
+    void LogModule(const wchar_t *name)
+    {
+        HMODULE module = GetModuleHandleW(name);
+        wchar_t msg[1024] = {};
+
+        if (!module)
+        {
+            swprintf_s(msg, L"Module state: %-20s NOT loaded", name);
+            WriteLog(msg);
+            return;
+        }
+
+        wchar_t path[MAX_PATH] = {};
+        DWORD len = GetModuleFileNameW(module, path, static_cast<DWORD>(CountOf(path)));
+        if (len > 0 && len < CountOf(path))
+            swprintf_s(msg, L"Module state: %-20s LOADED at 0x%p -> %s", name, module, path);
+        else
+            swprintf_s(msg, L"Module state: %-20s LOADED at 0x%p", name, module);
+
+        WriteLog(msg);
+    }
+
+    void LogCriticalModuleState(const wchar_t *phase)
+    {
+        wchar_t msg[256] = {};
+        swprintf_s(msg, L"---- %s ----", phase);
+        WriteLog(msg);
+
+        LogModule(L"sl.interposer.dll");
+        LogModule(L"sl.common.dll");
+        LogModule(L"sl.dlss_g.dll");
+        LogModule(L"nvngx_dlssg.dll");
+        LogModule(L"_nvngx.dll");
     }
 
     bool SamePath(const wchar_t *a, const wchar_t *b)
@@ -171,61 +205,77 @@ namespace
     HMODULE LoadViaKernel32(const wchar_t *fullPath)
     {
         SetLastError(ERROR_SUCCESS);
-
-        // Deliberately use plain LoadLibraryW with a full path.
-        // ReShade's LoadFromDllMain path uses LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
-        // which can alter dependency resolution for a proxy named version.dll.
         HMODULE module = LoadLibraryW(fullPath);
+
+        wchar_t msg[1024] = {};
         if (module)
         {
-            wchar_t msg[512] = {};
             swprintf_s(msg, L"LoadLibraryW fallback succeeded: module=0x%p", module);
             WriteLog(msg);
             return module;
         }
 
         DWORD err = GetLastError();
-        wchar_t msg[1024] = {};
         swprintf_s(msg, L"LoadLibraryW fallback failed: Win32 error=%lu", err);
         WriteLog(msg);
         return nullptr;
     }
 
-    void LoadSm86Early()
+    bool FileExists(const wchar_t *path)
+    {
+        const DWORD attrs = GetFileAttributesW(path);
+        return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    }
+
+    bool FindTarget(wchar_t *out, size_t outCount)
     {
         wchar_t base[MAX_PATH] = {};
         if (!GetExeDirectory(base, CountOf(base)))
+            return false;
+
+        const wchar_t *relativeCandidates[] = {
+            L"SM86\\version.dll",
+            L"SM86Bridge\\version.dll",
+            L"dlssg_sm86\\version.dll"
+        };
+
+        for (const wchar_t *relative : relativeCandidates)
         {
-            WriteLog(L"Could not resolve game executable directory.");
-            return;
+            wchar_t candidate[MAX_PATH] = {};
+            swprintf_s(candidate, L"%s%s", base, relative);
+
+            wchar_t msg[2048] = {};
+            swprintf_s(msg, L"Checking SM86 proxy candidate: %s", candidate);
+            WriteLog(msg);
+
+            if (FileExists(candidate))
+            {
+                wcsncpy_s(out, outCount, candidate, _TRUNCATE);
+                return true;
+            }
         }
 
+        return false;
+    }
+
+    void LoadSm86Early()
+    {
+        LogCriticalModuleState(L"critical modules BEFORE SM86 load");
+
+        if (GetModuleHandleW(L"sl.interposer.dll") != nullptr)
+            WriteLog(L"WARNING: sl.interposer.dll is already loaded before SM86 bridge execution. Native RTX20/30 DLSSG unlock may already be too late.");
+
         wchar_t target[MAX_PATH] = {};
-        swprintf_s(target, L"%sSM86\\version.dll", base);
+        if (!FindTarget(target, CountOf(target)))
+        {
+            WriteLog(L"SM86 version.dll was not found in SM86\\, SM86Bridge\\, or dlssg_sm86\\.");
+            LogCriticalModuleState(L"critical modules AFTER failed SM86 lookup");
+            return;
+        }
 
         wchar_t msg[2048] = {};
         swprintf_s(msg, L"Target SM86 proxy: %s", target);
         WriteLog(msg);
-
-        DWORD attrs = GetFileAttributesW(target);
-        if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY))
-        {
-            WriteLog(L"SM86\\version.dll not found.");
-            return;
-        }
-
-        // Avoid duplicate load of the exact file if this bridge is loaded twice.
-        HMODULE existing = nullptr;
-        if (GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                target,
-                &existing) &&
-            existing)
-        {
-            WriteLog(L"SM86 proxy already loaded.");
-            g_sm86 = existing;
-            return;
-        }
 
         WriteLog(L"Attempt 1: direct ntdll LdrLoadDll (bypasses ReShade LoadLibrary hooks).");
         HMODULE module = LoadViaNtdll(target);
@@ -234,14 +284,12 @@ namespace
         {
             g_sm86 = module;
             WriteLog(L"SM86 proxy loaded successfully via LdrLoadDll.");
+            LogCriticalModuleState(L"critical modules AFTER successful SM86 load");
             return;
         }
 
         if (module)
-        {
-            // Do not unload under loader lock. Keep it resident and continue diagnostics.
-            WriteLog(L"LdrLoadDll returned a different module; leaving it loaded and trying fallback.");
-        }
+            WriteLog(L"LdrLoadDll returned a different module; leaving it resident and trying fallback.");
 
         WriteLog(L"Attempt 2: plain LoadLibraryW(full path), without DLL_LOAD_DIR flags.");
         module = LoadViaKernel32(target);
@@ -250,10 +298,12 @@ namespace
         {
             g_sm86 = module;
             WriteLog(L"SM86 proxy loaded successfully via LoadLibraryW fallback.");
+            LogCriticalModuleState(L"critical modules AFTER successful SM86 fallback");
             return;
         }
 
         WriteLog(L"SM86 proxy could not be loaded. Check the errors above.");
+        LogCriticalModuleState(L"critical modules AFTER failed SM86 load");
     }
 }
 
@@ -262,7 +312,7 @@ BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID)
     if (reason == DLL_PROCESS_ATTACH)
     {
         DisableThreadLibraryCalls(module);
-        WriteLog(L"SM86 Bridge attached in ReShade DllMain stage.");
+        WriteLog(L"SM86 Bridge v2 attached in ReShade DllMain stage.");
         LoadSm86Early();
     }
     else if (reason == DLL_PROCESS_DETACH)
