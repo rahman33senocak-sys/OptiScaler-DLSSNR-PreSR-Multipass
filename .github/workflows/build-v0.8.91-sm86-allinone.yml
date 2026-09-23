@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: v0.8.91-sm86-allinone
+  cancel-in-progress: true
+
 jobs:
   package:
     runs-on: windows-latest
