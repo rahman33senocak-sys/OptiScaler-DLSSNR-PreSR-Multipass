@@ -1989,7 +1989,11 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             };
 
             const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
-            if (activeNvngxFg == FGNvngxReplacement::Arturs)
+            if (activeNvngxFg == FGNvngxReplacement::SM86 && state.activeFgOutput == FGOutput::DLSSG && fg)
+            {
+                fgText = formatFg("SM86 DLSSG", fg->GetMaxInterpolationCount());
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 fgText = formatFg("Enabler", Nvngx_FG::getMaxFakeFramesCount());
             }
@@ -3348,7 +3352,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     }
 #endif
 
-    if (ImGui::CollapsingHeader("RTX 20 / 30 (SM75 / SM86) MFG Unlock"))
+    if (ImGui::CollapsingHeader("RTX 20 / 30 Native NVIDIA DLSSG Unlock (SM75 / SM86)"))
     {
         ImGui::Indent();
         bool ampereUnlock = config->FGDLSSGAmpereMfgUnlock.value_or_default();
@@ -3358,10 +3362,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         const bool adaConfigured = false;
 #endif
         ImGui::BeginDisabled(!isSm75OrSm86 || adaConfigured);
-        if (ImGui::Checkbox("Enable SM86/SM75 MFG (restart)##ampere", &ampereUnlock))
+        if (ImGui::Checkbox("Enable native/global SM86 unlock (restart)##ampere", &ampereUnlock))
         {
             config->FGDLSSGAmpereMfgUnlock = ampereUnlock;
-            config->ExternalFrameGeneration = ampereUnlock;
 #if defined(OPTISCALER_RTX40_MFG)
             if (ampereUnlock)
                 config->FGDLSSGAdaMfgUnlock = false;
@@ -3374,8 +3377,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         else if (adaConfigured)
             ShowHelpMarker("Disable RTX 40 MFG unlock, Save Settings and restart first.");
         else
-            ShowHelpMarker("Loads the bundled SM75/SM86 companion and leaves the game's native FG/Streamline stack in control.\n"
-                           "Neural Rendering and super resolution remain active. Save Settings and restart.");
+            ShowHelpMarker("ON loads SM86 early and unlocks the game's native NVIDIA Streamline/DLSSG path like a supported RTX 40/50-class path.\n"
+                           "It does NOT change FG Input, FG Output or DLSSG Provider/Replacement.\n"
+                           "OFF leaves the native game path untouched; SM86 can still be selected below as an OptiScaler DLSSG provider.");
 
         if (ampereUnlock)
         {
@@ -3383,37 +3387,39 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             if (!status.ErrorMessage.empty())
                 ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "SM86: %s", status.ErrorMessage.c_str());
             else
-                ImGui::TextWrapped("SM86 companion: DLL %s | INI %s | loaded %s | router %s",
-                                   status.DllFound ? "found" : "missing",
+                ImGui::TextWrapped("SM86 ASI: %s | INI %s | loaded %s | mode %s | router %s",
+                                   status.PluginFound ? "found" : "missing",
                                    status.IniWritten ? "written" : "not written",
-                                   status.DllLoaded ? "yes" : "no",
+                                   status.PluginLoaded ? "yes" : "no",
+                                   AmpereMfgLoader::ModeName(status.LoadedMode),
                                    AmpereMfgLoader::ResolveRouter().c_str());
-
-            int maxFrames = config->FGDLSSGAmpereMfgMaxFrames.value_or_default();
-            const char* frameLabels[] = { "Default", "1 (2X)", "2 (3X)", "3 (4X)", "4 (5X)", "5 (6X)" };
-            const char* frameLabel = maxFrames >= 0 && maxFrames <= 5 ? frameLabels[maxFrames] : "Default";
-            if (ImGui::SliderInt("Max Generated Frames##sm86", &maxFrames, 0, 5, frameLabel))
-                config->FGDLSSGAmpereMfgMaxFrames = maxFrames;
-            ShowHelpMarker("0 = companion default. 5 enables the 6X ceiling of the bundled 310.9 runtime when the game's Streamline plugin supports 6X/Dynamic MFG. Save and restart.");
-
-            const std::string autoLabel = "Auto (0.3.5 runtime)";
-            const char* kernelOptions[] = { autoLabel.c_str(), "PTX", "Cubin" };
-            const std::string currentKernel = config->FGDLSSGAmpereMfgKernelImage.value_or("Auto");
-            int kernelIndex = currentKernel == "PTX" ? 1 : currentKernel == "Cubin" ? 2 : 0;
-            if (ImGui::Combo("Kernel Image##sm86", &kernelIndex, kernelOptions, 3))
-            {
-                const char* stored[] = { "Auto", "PTX", "Cubin" };
-                config->FGDLSSGAmpereMfgKernelImage = std::string(stored[kernelIndex]);
-            }
-            ShowHelpMarker("Auto chooses PTX for Turing, laptop/mobile, RTX 3080 Ti and Proton; otherwise the companion selects its normal SM86 path.");
-
-            bool hardwareBilinear = config->FGDLSSGAmpereMfgHardwareBilinear.value_or_default();
-            ImGui::BeginDisabled(!AmpereMfgLoader::IsAmpereArch(primaryArch));
-            if (ImGui::Checkbox("Hardware Bilinear (approximate)##sm86", &hardwareBilinear))
-                config->FGDLSSGAmpereMfgHardwareBilinear = hardwareBilinear;
-            ImGui::EndDisabled();
-            ShowHelpMarker("Optional approximate SM86 sampling. Keep OFF for exact output.");
         }
+
+        int maxFrames = config->FGDLSSGAmpereMfgMaxFrames.value_or_default();
+        const char* frameLabels[] = { "Default", "1 (2X)", "2 (3X)", "3 (4X)", "4 (5X)", "5 (6X)" };
+        const char* frameLabel = maxFrames >= 0 && maxFrames <= 5 ? frameLabels[maxFrames] : "Default";
+        if (ImGui::SliderInt("SM86 Max Generated Frames", &maxFrames, 0, 5, frameLabel))
+            config->FGDLSSGAmpereMfgMaxFrames = maxFrames;
+        ShowHelpMarker("Used by both native/global SM86 unlock and the OptiScaler SM86 DLSSG provider. 5 enables the 6X ceiling of the bundled 310.9 runtime when the Streamline plugin supports 6X/Dynamic MFG. Save and restart.");
+
+        const std::string autoLabel = "Auto (0.3.5 runtime)";
+        const char* kernelOptions[] = { autoLabel.c_str(), "PTX", "Cubin" };
+        const std::string currentKernel = config->FGDLSSGAmpereMfgKernelImage.value_or("Auto");
+        int kernelIndex = currentKernel == "PTX" ? 1 : currentKernel == "Cubin" ? 2 : 0;
+        if (ImGui::Combo("SM86 Kernel Image", &kernelIndex, kernelOptions, 3))
+        {
+            const char* stored[] = { "Auto", "PTX", "Cubin" };
+            config->FGDLSSGAmpereMfgKernelImage = std::string(stored[kernelIndex]);
+        }
+        ShowHelpMarker("Auto lets dlssg_for_sm86 0.3.5 choose the correct SM75/SM86 kernel image and fall back to PTX when necessary.");
+
+        bool hardwareBilinear = config->FGDLSSGAmpereMfgHardwareBilinear.value_or_default();
+        ImGui::BeginDisabled(!AmpereMfgLoader::IsAmpereArch(primaryArch));
+        if (ImGui::Checkbox("SM86 Hardware Bilinear (approximate)", &hardwareBilinear))
+            config->FGDLSSGAmpereMfgHardwareBilinear = hardwareBilinear;
+        ImGui::EndDisabled();
+        ShowHelpMarker("Keep OFF for exact output. The 310.9 runtime forces this off for the exact SM86 path.");
+
         ImGui::Unindent();
     }
 
@@ -3561,7 +3567,10 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // clang-format off
 
     nvngxOptions = {
-        { FGNvngxReplacement::None, "None (Real DLSSG)", "Real DLSSG, For RTX 40xx and above"},
+        { FGNvngxReplacement::None, "None (Real DLSSG)", "Normal NVIDIA DLSSG provider. RTX 20/30 requires the native/global SM86 unlock if the game path needs to be unlocked."},
+        { FGNvngxReplacement::SM86, "SM86 (NVIDIA DLSSG)", "Bundled dlssg_for_sm86 0.3.5 for OptiScaler's own DLSSG output on RTX 20/30.\n\n"
+                                                           "When Native SM86 Unlock is OFF, this loads on demand with SpoofArchToGame=0.\n"
+                                                           "It does not act as an NvngxFG replacement provider." },
         { FGNvngxReplacement::Nukems, "Nukem's", "FSR 3 FG" },
         { FGNvngxReplacement::Arturs, "Enabler", "FSR 3 MFG mod" },
         { FGNvngxReplacement::FFX, "FSR 3/4 FG", "FSR 3/4 FG using the FFX upgrade\n\n"
@@ -3590,6 +3599,13 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     auto constexpr fgNvngxNoneIndex = (uint32_t) FGNvngxReplacement::None;
     nvngxOptions[fgNvngxNoneIndex].set_disabled(!maySupportDlssg, "Unsupported hardware");
+
+    auto constexpr fgNvngxSm86Index = (uint32_t) FGNvngxReplacement::SM86;
+    nvngxOptions[fgNvngxSm86Index].set_disabled(!isSm75OrSm86, "SM86 provider is only for RTX 20/30");
+    nvngxOptions[fgNvngxSm86Index].set_disabled(!AmpereMfgLoader::IsPluginAvailable(),
+                                                "Missing OptiScaler/plugins/dlssg_sm86.asi");
+    nvngxOptions[fgNvngxSm86Index].set_disabled(replaceFgOutputWithNvngx,
+                                                "SM86 is a DLSSG output provider, not an NvngxFG replacement");
 
     if (replaceFgOutputWithNvngx)
     {
@@ -3650,8 +3666,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         // Should be on a new line
         if (showNvngxFgDowndown)
         {
-            PopulateCombo("FG Nvngx Replacement", config->FGNvngxReplacement, nvngxOptions);
-            ShowTooltip("What backend to use instead of the real DLSSG");
+            PopulateCombo("DLSSG Provider / Replacement", config->FGNvngxReplacement, nvngxOptions);
+            ShowTooltip("Select normal NVIDIA DLSSG, SM86 NVIDIA DLSSG for RTX 20/30, or another replacement backend");
         }
 
         // Try to avoid having None selected when the gpu doesn't support DLSSG + some fallbacks
@@ -4878,7 +4894,20 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
     const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
     if (activeNvngxFg != FGNvngxReplacement::None)
     {
-        if (activeNvngxFg == FGNvngxReplacement::Nukems)
+        if (activeNvngxFg == FGNvngxReplacement::SM86)
+        {
+            const auto sm86Status = AmpereMfgLoader::LastStatus();
+            SeparatorWithHelpMarker("Frame Generation (NVIDIA DLSSG via SM86)",
+                                    "dlssg_for_sm86 0.3.5 / NVIDIA DLSSG runtime on RTX 20/30");
+            ImGui::TextWrapped("SM86 ASI: %s | mode: %s | SpoofArchToGame: %s",
+                               sm86Status.PluginLoaded ? "loaded" : "not loaded",
+                               AmpereMfgLoader::ModeName(sm86Status.LoadedMode),
+                               sm86Status.LoadedMode == AmpereMfgLoader::LoadMode::NativeUnlock ? "ON" : "OFF");
+            if (!sm86Status.ErrorMessage.empty())
+                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.4f, 0.4f, 1.f)), "%s",
+                                   sm86Status.ErrorMessage.c_str());
+        }
+        else if (activeNvngxFg == FGNvngxReplacement::Nukems)
         {
             SeparatorWithHelpMarker("Frame Generation (FSR3-FG via Nukem's DLSSG)",
                                     "Requires Nukem's dlssg_to_fsr3 dll");
@@ -4971,10 +5000,17 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
 
         bool isLoaded = false;
-        if (state.swapchainApi == Vulkan)
-            isLoaded = Nvngx_FG::isVulkanAvailable();
-        if (state.swapchainApi == DX12)
-            isLoaded = Nvngx_FG::isDx12Available();
+        if (activeNvngxFg == FGNvngxReplacement::SM86)
+        {
+            isLoaded = AmpereMfgLoader::LastStatus().PluginLoaded;
+        }
+        else
+        {
+            if (state.swapchainApi == Vulkan)
+                isLoaded = Nvngx_FG::isVulkanAvailable();
+            if (state.swapchainApi == DX12)
+                isLoaded = Nvngx_FG::isDx12Available();
+        }
 
         if (isLoaded)
         {
