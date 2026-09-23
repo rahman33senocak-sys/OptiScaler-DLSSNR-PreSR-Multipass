@@ -42,12 +42,12 @@ jobs:
       - name: Package DLSS5 + RTX40 + SM75/SM86
         shell: powershell
         run: |
-          .\package_release.ps1 -Version 'v0.8.91-sm86-allinone' -SkipBuild -EnableRtx40Mfg -IncludeAmpereMfg -AcceptAmpereMfgLicenses
+          .\package_release.ps1 -Version 'v0.8.91-sm86-0.3.5-allinone' -SkipBuild -EnableRtx40Mfg -IncludeAmpereMfg -AcceptAmpereMfgLicenses
 
       - name: Upload ready ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: OptiScaler-NR-v0.8.91-sm86-allinone
+          name: OptiScaler-NR-v0.8.91-sm86-0.3.5-allinone
           path: release/*.zip
           if-no-files-found: error
           retention-days: 14
