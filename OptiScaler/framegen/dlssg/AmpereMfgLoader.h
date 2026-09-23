@@ -46,7 +46,7 @@ inline std::string FormatIniContent(int maxFrames, const std::string& kernelImg,
                                     const std::string& router = "SM86", int logLevel = 1,
                                     bool spoofArchToGame = true)
 {
-    if (maxFrames <= 0 || maxFrames > 5)
+    if (maxFrames < 0 || maxFrames > 5)
         maxFrames = 3;
 
     std::string validKernel = kernelImg;
