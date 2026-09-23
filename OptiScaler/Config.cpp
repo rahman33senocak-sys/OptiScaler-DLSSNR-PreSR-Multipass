@@ -68,8 +68,6 @@ bool Config::Reload(std::filesystem::path iniPath)
         // Frame Generation
         {
             FGEnabled.set_from_config(readBool("FrameGen", "Enabled"));
-            // Derived only from AmpereMfgUnlock below. A stale INI value must never disable native DLSSG.
-            ExternalFrameGeneration.set_from_config(false);
             FGDebugView.set_from_config(readBool("FrameGen", "DebugView"));
 
             if (auto FGInputString = readString("FrameGen", "FGInput"); FGInputString.has_value())
@@ -115,6 +113,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             {
                 if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "none") == 0)
                     FGNvngxReplacement.set_from_config(FGNvngxReplacement::None);
+                else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "sm86") == 0)
+                    FGNvngxReplacement.set_from_config(FGNvngxReplacement::SM86);
                 else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "nukems") == 0)
                     FGNvngxReplacement.set_from_config(FGNvngxReplacement::Nukems);
                 else if (lstrcmpiA(FGNvngxReplacementString.value().c_str(), "arturs") == 0)
@@ -260,8 +260,6 @@ bool Config::Reload(std::filesystem::path iniPath)
                     FGDLSSGAmpereMfgKernelImage.set_from_config("Auto");
             }
             FGDLSSGAmpereMfgHardwareBilinear.set_from_config(readBool("DLSSG", "AmpereMfgHardwareBilinear"));
-
-            ExternalFrameGeneration.set_from_config(FGDLSSGAmpereMfgUnlock.value_or_default());
 
             FGDLSSGInterpolationCount.set_from_config(readInt("DLSSG", "InterpolationCount"));
             if (FGDLSSGInterpolationCount.has_value() &&
@@ -1001,7 +999,7 @@ bool Config::SaveIni(std::filesystem::path destination)
     // Frame Generation
     {
         ini.SetValue("FrameGen", "Enabled", GetBoolValue(Instance()->FGEnabled.value_for_config()).c_str());
-        const bool ampereUnlock = Instance()->FGDLSSGAmpereMfgUnlock.value_for_config_or(false);
+        // Migration cleanup for earlier all-in-one builds. SM86 unlock no longer owns/disables OptiScaler FG.
         ini.Delete("FrameGen", "External");
         ini.SetValue("FrameGen", "DebugView", GetBoolValue(Instance()->FGDebugView.value_for_config()).c_str());
         std::string FGInputString = "auto";
@@ -1042,6 +1040,8 @@ bool Config::SaveIni(std::filesystem::path destination)
         {
             if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::None)
                 FGNvngxReplacementString = "None";
+            else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::SM86)
+                FGNvngxReplacementString = "SM86";
             else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Nukems)
                 FGNvngxReplacementString = "Nukems";
             else if (FGNvngxReplacementHeld.value() == FGNvngxReplacement::Arturs)
