@@ -1,0 +1,43 @@
+name: Build ReShade SM86 Bridge
+
+on:
+  push:
+    branches:
+      - tooling/reshade-sm86-bridge
+    paths:
+      - tools/reshade-sm86-bridge/**
+      - .github/workflows/build-reshade-sm86-bridge.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build bridge
+        shell: cmd
+        run: |
+          if not exist dist mkdir dist
+          if not exist dist\SM86Bridge mkdir dist\SM86Bridge
+          cl /nologo /std:c++17 /O2 /MT /EHsc /LD tools\reshade-sm86-bridge\SM86Bridge.cpp /link /OUT:dist\SM86Bridge\SM86Bridge.dll || exit /b 1
+          if not exist dist\SM86Bridge\SM86Bridge.dll exit /b 1
+          copy tools\reshade-sm86-bridge\README.md dist\README.md || exit /b 1
+          echo [ADDON]> dist\ReShade_SM86_snippet.ini
+          echo DisabledAddons=Generic Depth,Effect Runtime Sync>> dist\ReShade_SM86_snippet.ini
+          echo LoadFromDllMain=SM86Bridge\SM86Bridge.dll>> dist\ReShade_SM86_snippet.ini
+          echo LoadFromDllMain=renodx-dlss.addon64>> dist\ReShade_SM86_snippet.ini
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReShade-SM86-Bridge-x64
+          path: dist/
+          if-no-files-found: error
