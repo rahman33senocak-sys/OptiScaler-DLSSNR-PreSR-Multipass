@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <dlssnr/DlssNr_MenuOverlay.h>
 #include "menu_common.h"
+#include <framegen/dlssg/AmpereMfgLoader.h>
 #if defined(OPTISCALER_RTX40_MFG)
 #include <framegen/dlssg/MfgUnlock.h>
 #endif
@@ -3310,13 +3311,19 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto config = ctx.config;
     auto& menuResScale = ctx.menuResScale;
     auto& primaryGpu = *ctx.primaryGpu;
+    const uint32_t primaryArch = static_cast<uint32_t>(primaryGpu.nvidiaArchInfo.architecture_id);
+    const bool isSm75OrSm86 =
+        primaryGpu.vendorId == VendorId::Nvidia &&
+        (AmpereMfgLoader::IsTuringArch(primaryArch) || AmpereMfgLoader::IsAmpereArch(primaryArch) ||
+         primaryGpu.name.find("RTX 20") != std::string::npos || primaryGpu.name.find("RTX 30") != std::string::npos);
+    const bool ampereConfigured = config->FGDLSSGAmpereMfgUnlock.value_or_default();
 
 #if defined(OPTISCALER_RTX40_MFG)
     const bool adaEnabledForSession = MfgUnlock::EnabledForSession();
     bool adaUnlock = config->FGDLSSGAdaMfgUnlock.value_or_default();
     const bool isAda = primaryGpu.vendorId == VendorId::Nvidia &&
                        primaryGpu.nvidiaArchInfo.architecture_id == NV_GPU_ARCHITECTURE_AD100;
-    ImGui::BeginDisabled(!isAda);
+    ImGui::BeginDisabled(!isAda || ampereConfigured);
     if (ImGui::Checkbox("RTX 40 MFG unlock (restart)", &adaUnlock))
         config->FGDLSSGAdaMfgUnlock = adaUnlock;
     ImGui::EndDisabled();
@@ -3340,6 +3347,76 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         RenderAdaUnlockOptions(config, status, [](const char* tip) { ShowHelpMarker(tip); });
     }
 #endif
+
+    if (ImGui::CollapsingHeader("RTX 20 / 30 (SM75 / SM86) MFG Unlock"))
+    {
+        ImGui::Indent();
+        bool ampereUnlock = config->FGDLSSGAmpereMfgUnlock.value_or_default();
+#if defined(OPTISCALER_RTX40_MFG)
+        const bool adaConfigured = config->FGDLSSGAdaMfgUnlock.value_or_default();
+#else
+        const bool adaConfigured = false;
+#endif
+        ImGui::BeginDisabled(!isSm75OrSm86 || adaConfigured);
+        if (ImGui::Checkbox("Enable SM86/SM75 MFG (restart)##ampere", &ampereUnlock))
+        {
+            config->FGDLSSGAmpereMfgUnlock = ampereUnlock;
+            config->ExternalFrameGeneration = ampereUnlock;
+#if defined(OPTISCALER_RTX40_MFG)
+            if (ampereUnlock)
+                config->FGDLSSGAdaMfgUnlock = false;
+#endif
+        }
+        ImGui::EndDisabled();
+
+        if (!isSm75OrSm86)
+            ShowHelpMarker("Available only on NVIDIA RTX 20/Turing or RTX 30/Ampere.");
+        else if (adaConfigured)
+            ShowHelpMarker("Disable RTX 40 MFG unlock, Save Settings and restart first.");
+        else
+            ShowHelpMarker("Loads the bundled SM75/SM86 companion and leaves the game's native FG/Streamline stack in control.\n"
+                           "Neural Rendering and super resolution remain active. Save Settings and restart.");
+
+        if (ampereUnlock)
+        {
+            const auto status = AmpereMfgLoader::LastStatus();
+            if (!status.ErrorMessage.empty())
+                ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "SM86: %s", status.ErrorMessage.c_str());
+            else
+                ImGui::TextWrapped("SM86 companion: DLL %s | INI %s | loaded %s | router %s",
+                                   status.DllFound ? "found" : "missing",
+                                   status.IniWritten ? "written" : "not written",
+                                   status.DllLoaded ? "yes" : "no",
+                                   AmpereMfgLoader::ResolveRouter().c_str());
+
+            int maxFrames = config->FGDLSSGAmpereMfgMaxFrames.value_or_default();
+            const char* frameLabels[] = { "Default", "1 (2X)", "2 (3X)", "3 (4X)" };
+            const char* frameLabel = maxFrames >= 0 && maxFrames <= 3 ? frameLabels[maxFrames] : "Default";
+            if (ImGui::SliderInt("Max Generated Frames##sm86", &maxFrames, 0, 3, frameLabel))
+                config->FGDLSSGAmpereMfgMaxFrames = maxFrames;
+            ShowHelpMarker("Maximum generated frames advertised by the SM75/SM86 companion. Save and restart.");
+
+            const std::string resolvedAuto = AmpereMfgLoader::ResolveAutoKernelImage();
+            const std::string autoLabel = resolvedAuto != "Auto" ? "Auto (" + resolvedAuto + ")" : "Auto";
+            const char* kernelOptions[] = { autoLabel.c_str(), "PTX", "Cubin" };
+            const std::string currentKernel = config->FGDLSSGAmpereMfgKernelImage.value_or("Auto");
+            int kernelIndex = currentKernel == "PTX" ? 1 : currentKernel == "Cubin" ? 2 : 0;
+            if (ImGui::Combo("Kernel Image##sm86", &kernelIndex, kernelOptions, 3))
+            {
+                const char* stored[] = { "Auto", "PTX", "Cubin" };
+                config->FGDLSSGAmpereMfgKernelImage = std::string(stored[kernelIndex]);
+            }
+            ShowHelpMarker("Auto chooses PTX for Turing, laptop/mobile, RTX 3080 Ti and Proton; otherwise the companion selects its normal SM86 path.");
+
+            bool hardwareBilinear = config->FGDLSSGAmpereMfgHardwareBilinear.value_or_default();
+            ImGui::BeginDisabled(!AmpereMfgLoader::IsAmpereArch(primaryArch));
+            if (ImGui::Checkbox("Hardware Bilinear (approximate)##sm86", &hardwareBilinear))
+                config->FGDLSSGAmpereMfgHardwareBilinear = hardwareBilinear;
+            ImGui::EndDisabled();
+            ShowHelpMarker("Optional approximate SM86 sampling. Keep OFF for exact output.");
+        }
+        ImGui::Unindent();
+    }
 
     /// FG INPUTS
     static std::vector<MenuOption<FGInput>> inputOptions;
