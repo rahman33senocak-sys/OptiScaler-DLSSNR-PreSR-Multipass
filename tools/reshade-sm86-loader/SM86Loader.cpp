@@ -19,6 +19,12 @@ namespace
 
     ReShadeLogMessage_t g_reshadeLog = nullptr;
 
+    template <typename T, size_t N>
+    constexpr size_t CountOf(T (&)[N]) noexcept
+    {
+        return N;
+    }
+
     bool GetExeDirectory(wchar_t *out, size_t outCount)
     {
         if (out == nullptr || outCount == 0)
@@ -43,7 +49,7 @@ namespace
     void WriteDiskLog(const wchar_t *message)
     {
         wchar_t base[MAX_PATH] = {};
-        if (!GetExeDirectory(base, _countof(base)))
+        if (!GetExeDirectory(base, CountOf(base)))
             return;
 
         wchar_t path[MAX_PATH] = {};
@@ -127,7 +133,6 @@ namespace
 
     HMODULE LoadSm86()
     {
-        // If another loader already brought it in, leave it alone.
         if (HMODULE existing = GetModuleHandleW(L"dlssg_sm86.asi"))
         {
             wchar_t message[512] = {};
@@ -137,19 +142,17 @@ namespace
         }
 
         wchar_t base[MAX_PATH] = {};
-        if (!GetExeDirectory(base, _countof(base)))
+        if (!GetExeDirectory(base, CountOf(base)))
         {
             Log(L"Could not resolve the game executable directory.");
             return nullptr;
         }
 
-        // Prefer the same layout the user already uses with OptiScaler.
         wchar_t candidate[MAX_PATH] = {};
         swprintf_s(candidate, L"%splugins\\dlssg_sm86.asi", base);
         if (HMODULE module = TryLoad(candidate))
             return module;
 
-        // Also support a simple game-root deployment.
         swprintf_s(candidate, L"%sdlssg_sm86.asi", base);
         if (HMODULE module = TryLoad(candidate))
             return module;
@@ -173,8 +176,6 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE re
     if (registerAddon == nullptr)
         return false;
 
-    // This add-on only needs the original registration API, so API v1 maximizes
-    // compatibility with ReShade builds while not depending on any newer API surface.
     if (!registerAddon(g_addon, 1))
         return false;
 
@@ -190,8 +191,6 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE re
     else
         Log(L"SM86 Loader initialization completed successfully.");
 
-    // Return true even if the ASI is missing, so the add-on remains visible and the
-    // on-disk log explains exactly what happened.
     return true;
 }
 
@@ -199,8 +198,6 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE 
 {
     Log(L"SM86 Loader ReShade add-on unloading.");
 
-    // Do NOT FreeLibrary(dlssg_sm86.asi) here. It installs process-wide hooks and
-    // unloading it before process shutdown can leave dangling hook targets.
     g_sm86 = nullptr;
 
     if (reshade_module != nullptr)
