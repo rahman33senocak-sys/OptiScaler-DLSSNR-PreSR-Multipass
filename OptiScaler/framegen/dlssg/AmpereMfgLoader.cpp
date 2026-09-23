@@ -248,8 +248,11 @@ std::string GenerateIniContent(LoadMode mode)
     const bool spoofArchToGame = mode == LoadMode::NativeUnlock;
 
     LOG_INFO("AmpereMfgLoader: router {} for GPU {}", router, IdentifyGpu::getPrimaryGpu().name);
-    LOG_INFO("AmpereMfgLoader: SM86 0.3.5 ceiling {} generated frames ({}X total), Optimized=1, mode {}",
-             maxFrames, maxFrames + 1, ModeName(mode));
+    if (maxFrames == 0)
+        LOG_INFO("AmpereMfgLoader: SM86 0.3.5 ceiling = runtime default, Optimized=1, mode {}", ModeName(mode));
+    else
+        LOG_INFO("AmpereMfgLoader: SM86 0.3.5 ceiling {} generated frames ({}X total), Optimized=1, mode {}",
+                 maxFrames, maxFrames + 1, ModeName(mode));
 
     return FormatIniContent(maxFrames, kernelImg, hwBilinear, router, logLevel, spoofArchToGame);
 }
