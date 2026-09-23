@@ -128,7 +128,10 @@ bool TrySetupInternal(LoadMode mode)
     }
 #endif
 
-    if (!ValidateGpu())
+    // Provider mode is explicitly an RTX 20/30 path and is initialized after a D3D device exists,
+    // so validate the physical GPU there. NativeUnlock must load before slInit and therefore does
+    // not wait for OptiScaler's asynchronous GPU enumeration; the SM86 runtime performs its own guard.
+    if (mode == LoadMode::Provider && !ValidateGpu())
     {
         LOG_ERROR("AmpereMfgLoader: {}", s_status.ErrorMessage);
         return false;
@@ -243,11 +246,13 @@ std::string GenerateIniContent(LoadMode mode)
         kernelImg = "Auto";
 
     const int hwBilinear = cfg->FGDLSSGAmpereMfgHardwareBilinear.value_or_default() ? 1 : 0;
-    const std::string router = ResolveRouter();
+    // 0.3.5 can identify the physical architecture itself. Keep Router=Auto so NativeUnlock can
+    // be loaded before OptiScaler's asynchronous GPU enumeration without guessing SM75 vs SM86.
+    const std::string router = "Auto";
     constexpr int logLevel = 1;
     const bool spoofArchToGame = mode == LoadMode::NativeUnlock;
 
-    LOG_INFO("AmpereMfgLoader: router {} for GPU {}", router, IdentifyGpu::getPrimaryGpu().name);
+    LOG_INFO("AmpereMfgLoader: router Auto (runtime physical-GPU selection)");
     if (maxFrames == 0)
         LOG_INFO("AmpereMfgLoader: SM86 0.3.5 ceiling = runtime default, Optimized=1, mode {}", ModeName(mode));
     else
