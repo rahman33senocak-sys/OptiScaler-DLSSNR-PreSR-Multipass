@@ -3601,11 +3601,13 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     nvngxOptions[fgNvngxNoneIndex].set_disabled(!maySupportDlssg, "Unsupported hardware");
 
     auto constexpr fgNvngxSm86Index = (uint32_t) FGNvngxReplacement::SM86;
-    nvngxOptions[fgNvngxSm86Index].set_disabled(!isSm75OrSm86, "SM86 provider is only for RTX 20/30");
-    nvngxOptions[fgNvngxSm86Index].set_disabled(!AmpereMfgLoader::IsPluginAvailable(),
-                                                "Missing OptiScaler/plugins/dlssg_sm86.asi");
-    nvngxOptions[fgNvngxSm86Index].set_disabled(replaceFgOutputWithNvngx,
-                                                "SM86 is a DLSSG output provider, not an NvngxFG replacement");
+    if (!isSm75OrSm86)
+        nvngxOptions[fgNvngxSm86Index].set_disabled(true, "SM86 provider is only for RTX 20/30");
+    else if (!AmpereMfgLoader::IsPluginAvailable())
+        nvngxOptions[fgNvngxSm86Index].set_disabled(true, "Missing OptiScaler/plugins/dlssg_sm86.asi");
+    else if (replaceFgOutputWithNvngx)
+        nvngxOptions[fgNvngxSm86Index].set_disabled(true,
+                                                    "SM86 is a DLSSG output provider, not an NvngxFG replacement");
 
     if (replaceFgOutputWithNvngx)
     {
