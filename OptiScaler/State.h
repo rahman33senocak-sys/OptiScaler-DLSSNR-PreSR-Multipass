@@ -53,6 +53,7 @@ enum class FGOutput : uint32_t
 enum class FGNvngxReplacement : uint32_t
 {
     None,
+    SM86,
     Nukems,
     Arturs,
     FFX,
@@ -179,7 +180,6 @@ class State
 
     // Frame Generation
     FGInput activeFgInput = FGInput::NoFG;
-    bool externalFrameGeneration = false; // startup-only: external MFG owns FG hooks
     FGOutput activeFgOutput = FGOutput::NoFG;
     // This should be set to a non-None value only if all other requirements are met and nvngx can be used
     FGNvngxReplacement activeFgNvngx = FGNvngxReplacement::None;
