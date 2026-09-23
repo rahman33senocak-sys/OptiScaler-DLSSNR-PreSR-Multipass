@@ -204,10 +204,6 @@ void* __stdcall NvApiHooks::hkNvAPI_QueryInterface(unsigned int InterfaceId)
         else
             return nullptr;
 
-    // External MFG owns native Reflex, flip metering and architecture/capability queries.
-    if (State::Instance().externalFrameGeneration)
-        return o_NvAPI_QueryInterface(InterfaceId);
-
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
 
     // Disable flip metering
