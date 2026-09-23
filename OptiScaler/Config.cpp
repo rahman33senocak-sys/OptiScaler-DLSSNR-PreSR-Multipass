@@ -1002,7 +1002,7 @@ bool Config::SaveIni(std::filesystem::path destination)
     {
         ini.SetValue("FrameGen", "Enabled", GetBoolValue(Instance()->FGEnabled.value_for_config()).c_str());
         const bool ampereUnlock = Instance()->FGDLSSGAmpereMfgUnlock.value_for_config_or(false);
-        ini.SetValue("FrameGen", "External", GetBoolValue(ampereUnlock).c_str());
+        ini.Delete("FrameGen", "External");
         ini.SetValue("FrameGen", "DebugView", GetBoolValue(Instance()->FGDebugView.value_for_config()).c_str());
         std::string FGInputString = "auto";
         if (auto FGInputHeld = Instance()->FGInput.value_for_config(); FGInputHeld.has_value())
