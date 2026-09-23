@@ -626,7 +626,8 @@ class Config
     CustomOptional<FGInput> FGInput { FGInput::NoFG };
     CustomOptional<bool> ExternalFrameGeneration { false }; // startup-only external MFG ownership
     CustomOptional<FGOutput> FGOutput { FGOutput::NoFG };
-    CustomOptional<FGNvngxReplacement> FGNvngxReplacement { FGNvngxReplacement::Nukems };
+    // Real/native DLSSG is the default. Replacements are opt-in.
+    CustomOptional<FGNvngxReplacement> FGNvngxReplacement { FGNvngxReplacement::None };
     CustomOptional<bool> FGDrawUIOverFG { false };
     CustomOptional<bool> FGUIPremultipliedAlpha { true };
     CustomOptional<bool> FGDisableHudless { false };
